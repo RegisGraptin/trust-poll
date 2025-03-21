@@ -91,3 +91,36 @@ One potential design approach:
 - Split the polling and benchmark logic in two separate contract
 
 If we are thinking about a business perspective, a factory pattern we kind of loose track of the users, by becoming more complex to fetch the user info
+
+## UI Aspect
+
+On the first section, we need to see the user vote, to let them know how they can do it, while providing metadata.
+For example, on the salary, I want to have an idea of the sector, maybe the age...
+This need to be submitted while voting.
+
+## Vote creation - param needed
+
+- Question
+
+- Vote type (benchmark or polling 2 answer)
+  => One int to store the data result
+
+- Is whitelisted?
+- If yes --> merkel tree root hash
+- If no, put warning attack
+
+- End time for voting? (0 -> No else Yes)
+
+- Participant threshold (for reveal)
+  => Need to think of edge cases. If 2 but 3 participants, last one can be leaked!
+  => Be careful of the end time for voting
+  => Reveal - no end time => threshold count
+  => Reveal - end time - end time + threshold with constraint!
+
+- Metadata
+- Metadata & constraint (v2)
+
+### Info during process
+
+- Number of participants
+-

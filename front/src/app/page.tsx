@@ -1,3 +1,4 @@
+import Landing from "@/components/Landing";
 import type { Metadata, NextPage } from "next";
 import React from "react";
 
@@ -12,9 +13,10 @@ export const metadata: Metadata = {
 
 const Home: NextPage = () => {
   return (
-    <main className="bg-gray-50 min-h-screen">
-     <h1>Hello new world</h1>
-    </main>
+    // <main className="bg-gray-50 min-h-screen">
+     
+     <Landing />
+    // </main>
   );
 };
 
