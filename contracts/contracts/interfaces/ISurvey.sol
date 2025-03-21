@@ -14,6 +14,7 @@ enum SurveyType {
 struct SurveyData {
     uint256 participantCount; // Number of participants
     euint256 encryptedResponses; // Encrypted survey data
+    uint256 decryptedResponses;
 }
 
 struct SurveyParams {
