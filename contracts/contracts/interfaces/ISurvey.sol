@@ -37,7 +37,12 @@ interface ISurvey {
     /// @return surveyId The id of the survey.
     function createSurvey(SurveyParams memory params) external returns (uint256);
 
-    function submitEntry(uint256 surveyId, einput eInputVote, uint256[] metadata, bytes calldata inputProof) external;
+    function submitEntry(
+        uint256 surveyId,
+        einput eInputVote,
+        uint256[] memory metadata,
+        bytes calldata inputProof
+    ) external;
 
     function revealResults(uint256 surveyId) external;
 }

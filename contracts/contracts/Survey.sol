@@ -19,8 +19,7 @@ contract Survey is ISurvey {
         // FIXME: check params value
 
         surveyParams[_surveyIds] = params;
-        SurveyParams[_surveyIds] = SurveyData({ participantCount: 0, encryptedResponses: TFHE.asEuint256(0) });
-
+        surveyData[_surveyIds] = SurveyData({ participantCount: 0, encryptedResponses: TFHE.asEuint256(0) });
         _surveyIds++;
 
         // TODO: emit event
@@ -50,7 +49,7 @@ contract Survey is ISurvey {
         surveyData[surveyId].participantCount++;
 
         // Save vote info
-        VoteData memory _voteData = new VoteData({ data: eVote, metadata: metadata });
+        VoteData memory _voteData = VoteData({ data: eVote, metadata: metadata });
         voteData[surveyId].push(_voteData);
 
         // Add user to the hasvoted list
@@ -58,4 +57,6 @@ contract Survey is ISurvey {
 
         // Emit event
     }
+
+    function revealResults(uint256 surveyId) external {}
 }
