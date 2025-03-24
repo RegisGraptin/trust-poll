@@ -7,24 +7,29 @@ import "fhevm/gateway/GatewayCaller.sol";
 import { SepoliaZamaFHEVMConfig } from "fhevm/config/ZamaFHEVMConfig.sol";
 import { SepoliaZamaGatewayConfig } from "fhevm/config/ZamaGatewayConfig.sol";
 
+import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+
 import { ISurvey, SurveyParams, SurveyData, VoteData } from "./interfaces/ISurvey.sol";
 
 contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
     uint256 private _surveyIds;
 
     mapping(uint256 => SurveyParams) public surveyParams;
-    mapping(uint256 => SurveyData) surveyData;
+    mapping(uint256 => SurveyData) public surveyData;
 
     mapping(uint256 => VoteData[]) voteData;
-    mapping(uint256 => mapping(address => bool)) hasVoted;
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
 
     function createSurvey(SurveyParams memory params) external returns (uint256) {
         // FIXME: check params value
 
+        euint256 eResponses = TFHE.asEuint256(0);
+        TFHE.allowThis(eResponses);
+
         surveyParams[_surveyIds] = params;
         surveyData[_surveyIds] = SurveyData({
             participantCount: 0,
-            encryptedResponses: TFHE.asEuint256(0),
+            encryptedResponses: eResponses,
             decryptedResponses: 0 // FIXME: add indicator for decrypted or not
         });
         _surveyIds++;
@@ -36,15 +41,24 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
 
     /// metadata parameter will be a list of encrypted arguments that should match the user type
     /// We could have [euint256, ebool, euint8, ...] input
-    function submitEntry(
+    function _submitEntry(
         uint256 surveyId,
         einput eInputVote,
         uint256[] memory metadata,
-        bytes calldata inputProof
-    ) external {
+        bytes calldata inputProof,
+        bytes32[] memory whitelistProof
+    ) internal {
         require(surveyId < _surveyIds, "invalid");
         require(!hasVoted[surveyId][msg.sender], "already_voted");
-        // FIXME:
+
+        // Check if user is whitelisted
+        if (surveyParams[surveyId].isWhitelisted) {
+            bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender))));
+            require(
+                MerkleProof.verify(whitelistProof, surveyParams[surveyId].whitelistRootHash, leaf),
+                "Invalid proof"
+            );
+        }
 
         // Check metadata type
 
@@ -52,8 +66,14 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
 
         // Add a new vote
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
+
+        // TODO:: Do we need to authorize user access or can skip it?
+
         surveyData[surveyId].encryptedResponses = TFHE.add(surveyData[surveyId].encryptedResponses, eVote);
         surveyData[surveyId].participantCount++;
+
+        // TODO :: Understand more deeply what does the allow this
+        TFHE.allowThis(surveyData[surveyId].encryptedResponses);
 
         // Save vote info
         VoteData memory _voteData = VoteData({ data: eVote, metadata: metadata });
@@ -63,6 +83,26 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
         hasVoted[surveyId][msg.sender] = true;
 
         // Emit event
+    }
+
+    function submitEntry(
+        uint256 surveyId,
+        einput eInputVote,
+        uint256[] memory metadata,
+        bytes calldata inputProof
+    ) external {
+        // FIXME: protect and double check no by pass whitelist or whatever
+        _submitEntry(surveyId, eInputVote, metadata, inputProof, new bytes32[](0));
+    }
+
+    function submitWhitelistedEntry(
+        uint256 surveyId,
+        einput eInputVote,
+        uint256[] memory metadata,
+        bytes calldata inputProof,
+        bytes32[] memory whitelistProof
+    ) external {
+        _submitEntry(surveyId, eInputVote, metadata, inputProof, whitelistProof);
     }
 
     mapping(uint256 requestId => uint256 surveyId) gatewayRequestId;

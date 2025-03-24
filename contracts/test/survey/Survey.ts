@@ -1,6 +1,9 @@
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
 import { network } from "hardhat";
 
+import { awaitAllDecryptionResults } from "../asyncDecrypt";
+import { ACCOUNT_NAMES } from "../constants";
 import { createInstance } from "../instance";
 import { reencryptEuint64 } from "../reencrypt";
 import { getSigners, initSigners } from "../signers";
@@ -23,6 +26,26 @@ describe("Survey", function () {
     this.contractAddress = await contract.getAddress();
     this.survey = contract;
     this.fhevm = await createInstance();
+
+    // Helper functions
+
+    /// Submit entry for polling survey
+    this.submitPollingEntry = async (
+      signer: HardhatEthersSigner,
+      surveyId: number,
+      entry: boolean,
+      userMetadata: [] = [], // Optional - Depends on the survey
+    ) => {
+      const input = this.fhevm.createEncryptedInput(this.contractAddress, signer.address);
+      const inputs = await input.add256(Number(entry)).encrypt();
+
+      // Create a new entry
+      // ["submitEntry(uint256,bytes32,uint256[],bytes)"]
+      const transaction = await this.survey
+        .connect(signer)
+        .submitEntry(surveyId, inputs.handles[0], userMetadata, inputs.inputProof);
+      await transaction.wait();
+    };
   });
 
   it("should create a new survey", async function () {
@@ -39,8 +62,55 @@ describe("Survey", function () {
     const transaction = await this.survey.createSurvey(surveyParam);
     await transaction.wait();
 
-    // Get the survey information at the index 0
+    // Check the survey information at the index 0
     const surveyData = await this.survey.surveyParams(0);
-    console.log("surveyData:", surveyData);
+
+    expect(surveyData[0]).to.be.equals("Are you in favor of privacy?");
+    expect(surveyData[2]).to.be.false; // Now whitelist
+    expect(surveyData[4]).to.be.equals(Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60);
+    expect(surveyData[5]).to.be.equals(100);
+
+    // Check that the user can vote
+    expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.false;
+    await this.submitPollingEntry(this.signers.alice, 0, true);
+    expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.true;
+  });
+
+  it("should handle polling survey", async function () {
+    // FIXME: need to fetch the available signers
+    const pollingVotes = [true, true, false, true];
+    const voterNames = ACCOUNT_NAMES;
+
+    // FIXME: (v2) add metadata assignement
+
+    const surveyParam = {
+      surveyPrompt: "Are you in favor of privacy?",
+      surveyType: SurveyType.POLLING,
+      isWhitelisted: false,
+      whitelistRootHash: new Uint8Array(32),
+      surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // Current timestamp + 7 days in seconds
+      responseThreshold: 4, // Example value, replace with actual threshold
+      metadataTypes: [], // Example value, replace with actual metadata types
+    };
+
+    const transaction = await this.survey.createSurvey(surveyParam);
+    await transaction.wait();
+
+    // Do the voting
+    for (let index = 0; index < pollingVotes.length; index++) {
+      await this.submitPollingEntry(this.signers[voterNames[index]], 0, pollingVotes[index]);
+    }
+
+    // Now it is possible to reveal the polling
+    await this.survey.revealResults(0);
+
+    // Wait for the Gateway to decypher it
+    await awaitAllDecryptionResults();
+
+    // Verify the polling data
+    const surveyDataAfterVoting = await this.survey.surveyData(0);
+
+    expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
+    expect(surveyDataAfterVoting[2]).to.be.equals(pollingVotes.filter(Boolean).length);
   });
 });

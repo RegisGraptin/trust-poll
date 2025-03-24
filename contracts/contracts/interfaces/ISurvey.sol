@@ -38,6 +38,10 @@ interface ISurvey {
     /// @return surveyId The id of the survey.
     function createSurvey(SurveyParams memory params) external returns (uint256);
 
+    // FIXME: Create two functions - one for whitelisted and another for simple one
+    // Two entrypoints but go to a single one
+    // Easier on frontend integration
+
     function submitEntry(
         uint256 surveyId,
         einput eInputVote,
@@ -45,5 +49,15 @@ interface ISurvey {
         bytes calldata inputProof
     ) external;
 
+    function submitWhitelistedEntry(
+        uint256 surveyId,
+        einput eInputVote,
+        uint256[] memory metadata,
+        bytes calldata inputProof,
+        bytes32[] memory whitelistProof
+    ) external;
+
     function revealResults(uint256 surveyId) external;
+
+    function hasVoted(uint256 surveyId, address user) external view returns (bool);
 }
