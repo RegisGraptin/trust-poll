@@ -44,7 +44,7 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
     function _submitEntry(
         uint256 surveyId,
         einput eInputVote,
-        uint256[] memory metadata,
+        einput[] memory metadata,
         bytes calldata inputProof,
         bytes32[] memory whitelistProof
     ) internal {
@@ -88,7 +88,7 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
     function submitEntry(
         uint256 surveyId,
         einput eInputVote,
-        uint256[] memory metadata,
+        einput[] memory metadata,
         bytes calldata inputProof
     ) external {
         // FIXME: protect and double check no by pass whitelist or whatever
@@ -98,7 +98,7 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
     function submitWhitelistedEntry(
         uint256 surveyId,
         einput eInputVote,
-        uint256[] memory metadata,
+        einput[] memory metadata,
         bytes calldata inputProof,
         bytes32[] memory whitelistProof
     ) external {

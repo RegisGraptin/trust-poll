@@ -29,7 +29,7 @@ struct SurveyParams {
 
 struct VoteData {
     euint256 data;
-    uint256[] metadata;
+    einput[] metadata;
 }
 
 interface ISurvey {
@@ -45,14 +45,14 @@ interface ISurvey {
     function submitEntry(
         uint256 surveyId,
         einput eInputVote,
-        uint256[] memory metadata,
+        einput[] memory metadata,
         bytes calldata inputProof
     ) external;
 
     function submitWhitelistedEntry(
         uint256 surveyId,
         einput eInputVote,
-        uint256[] memory metadata,
+        einput[] memory metadata,
         bytes calldata inputProof,
         bytes32[] memory whitelistProof
     ) external;

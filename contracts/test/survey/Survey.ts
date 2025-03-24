@@ -15,6 +15,11 @@ enum SurveyType {
   BENCHMARK = 1,
 }
 
+enum MetadataType {
+  BOOLEAN = 0,
+  UINT256 = 1,
+}
+
 describe("Survey", function () {
   before(async function () {
     await initSigners();
@@ -34,16 +39,51 @@ describe("Survey", function () {
       signer: HardhatEthersSigner,
       surveyId: number,
       entry: boolean,
-      userMetadata: [] = [], // Optional - Depends on the survey
+      surveyMetadataType: [] = [], // Optional - Depends on the survey
+      userMetadata: [] = [],
     ) => {
       const input = this.fhevm.createEncryptedInput(this.contractAddress, signer.address);
-      const inputs = await input.add256(Number(entry)).encrypt();
+      let inputs = input.add256(Number(entry));
+
+      // In case we have metadata, encrypt it
+      if (surveyMetadataType) {
+        for (let index = 0; index < surveyMetadataType.length; index++) {
+          const metadataType = surveyMetadataType[index];
+          const data = userMetadata[index];
+
+          console.log("> ", metadataType, data);
+
+          switch (metadataType) {
+            case MetadataType.BOOLEAN:
+              inputs = inputs.addBool(data);
+              break;
+            case MetadataType.UINT256:
+              inputs = inputs.add256(data);
+              break;
+
+            default:
+              // FIXME:
+              console.log("error");
+              break;
+          }
+        }
+      }
+      inputs = await inputs.encrypt();
+
+      let userEncryptedMetadata = [];
+      for (let index = 0; index < surveyMetadataType.length; index++) {
+        console.log("Ite +");
+        userEncryptedMetadata.push(inputs.handles[index + 1]);
+      }
+
+      console.log("end ite +");
+      console.log(userEncryptedMetadata);
 
       // Create a new entry
       // ["submitEntry(uint256,bytes32,uint256[],bytes)"]
       const transaction = await this.survey
         .connect(signer)
-        .submitEntry(surveyId, inputs.handles[0], userMetadata, inputs.inputProof);
+        .submitEntry(surveyId, inputs.handles[0], userEncryptedMetadata, inputs.inputProof);
       await transaction.wait();
     };
   });
@@ -55,8 +95,8 @@ describe("Survey", function () {
       isWhitelisted: false,
       whitelistRootHash: new Uint8Array(32),
       surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // Current timestamp + 7 days in seconds
-      responseThreshold: 100, // Example value, replace with actual threshold
-      metadataTypes: [], // Example value, replace with actual metadata types
+      responseThreshold: 100,
+      metadataTypes: [],
     };
 
     const transaction = await this.survey.createSurvey(surveyParam);
@@ -112,5 +152,60 @@ describe("Survey", function () {
 
     expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
     expect(surveyDataAfterVoting[2]).to.be.equals(pollingVotes.filter(Boolean).length);
+  });
+
+  it("should handle polling survey with metadata", async function () {
+    const pollingVotes = [true, true, false, true];
+    // TODO: TBD
+    // age, gender
+    const userMetadata = [
+      [24, true],
+      [53, true],
+      [27, false],
+      [28, true],
+    ];
+    const voterNames = ACCOUNT_NAMES;
+
+    // FIXME: (v2) add metadata assignement
+
+    const surveyMetadataTypes = [MetadataType.UINT256, MetadataType.BOOLEAN];
+
+    const surveyParam = {
+      surveyPrompt: "Are you in favor of privacy?",
+      surveyType: SurveyType.POLLING,
+      isWhitelisted: false,
+      whitelistRootHash: new Uint8Array(32),
+      surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // Current timestamp + 7 days in seconds
+      responseThreshold: 4,
+      metadataTypes: surveyMetadataTypes,
+    };
+
+    const transaction = await this.survey.createSurvey(surveyParam);
+    await transaction.wait();
+
+    // FIXME: Check survey metadata
+
+    // Do the voting
+    for (let index = 0; index < pollingVotes.length; index++) {
+      await this.submitPollingEntry(
+        this.signers[voterNames[index]],
+        0,
+        pollingVotes[index],
+        surveyMetadataTypes,
+        userMetadata[index],
+      );
+    }
+
+    // // Now it is possible to reveal the polling
+    // await this.survey.revealResults(0);
+
+    // // Wait for the Gateway to decypher it
+    // await awaitAllDecryptionResults();
+
+    // // Verify the polling data
+    // const surveyDataAfterVoting = await this.survey.surveyData(0);
+
+    // expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
+    // expect(surveyDataAfterVoting[2]).to.be.equals(pollingVotes.filter(Boolean).length);
   });
 });
