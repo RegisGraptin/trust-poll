@@ -29,7 +29,7 @@ struct SurveyParams {
 
 struct VoteData {
     euint256 data;
-    einput[] metadata;
+    uint256[] metadata;
 }
 
 interface ISurvey {

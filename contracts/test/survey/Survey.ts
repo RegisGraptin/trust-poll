@@ -51,8 +51,6 @@ describe("Survey", function () {
           const metadataType = surveyMetadataType[index];
           const data = userMetadata[index];
 
-          console.log("> ", metadataType, data);
-
           switch (metadataType) {
             case MetadataType.BOOLEAN:
               inputs = inputs.addBool(data);
@@ -72,12 +70,8 @@ describe("Survey", function () {
 
       let userEncryptedMetadata = [];
       for (let index = 0; index < surveyMetadataType.length; index++) {
-        console.log("Ite +");
         userEncryptedMetadata.push(inputs.handles[index + 1]);
       }
-
-      console.log("end ite +");
-      console.log(userEncryptedMetadata);
 
       // Create a new entry
       // ["submitEntry(uint256,bytes32,uint256[],bytes)"]
@@ -196,16 +190,19 @@ describe("Survey", function () {
       );
     }
 
-    // // Now it is possible to reveal the polling
-    // await this.survey.revealResults(0);
+    // Now it is possible to reveal the polling
+    await this.survey.revealResults(0);
 
-    // // Wait for the Gateway to decypher it
-    // await awaitAllDecryptionResults();
+    // Wait for the Gateway to decypher it
+    await awaitAllDecryptionResults();
 
-    // // Verify the polling data
-    // const surveyDataAfterVoting = await this.survey.surveyData(0);
+    // Verify the polling data
+    const surveyDataAfterVoting = await this.survey.surveyData(0);
 
-    // expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
-    // expect(surveyDataAfterVoting[2]).to.be.equals(pollingVotes.filter(Boolean).length);
+    expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
+    expect(surveyDataAfterVoting[2]).to.be.equals(pollingVotes.filter(Boolean).length);
+
+    // Analyse it
+    // Analysts could then view aggregated results, for example, the breakdown of votes from men over 45.
   });
 });

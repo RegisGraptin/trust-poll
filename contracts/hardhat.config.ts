@@ -117,11 +117,21 @@ const config: HardhatUserConfig = {
         // https://github.com/paulrberg/hardhat-template/issues/31
         bytecodeHash: "none",
       },
+      // We are using nested array that required to be converted from
+      // memory to storage.
+      // 'viaIR' option required optimizer to be activated
+      // https://hardhat.org/hardhat-runner/docs/reference/solidity-support
+      viaIR: true,
       // Disable the optimizer when debugging
       // https://hardhat.org/hardhat-network/#solidity-optimizer-support
       optimizer: {
         enabled: true,
         runs: 800,
+        details: {
+          yulDetails: {
+            optimizerSteps: "u",
+          },
+        },
       },
       evmVersion: "cancun",
     },

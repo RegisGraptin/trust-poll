@@ -9,9 +9,12 @@ import { SepoliaZamaGatewayConfig } from "fhevm/config/ZamaGatewayConfig.sol";
 
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { ISurvey, SurveyParams, SurveyData, VoteData } from "./interfaces/ISurvey.sol";
+import { MetadataType } from "./interfaces/IMetadata.sol";
 
-contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
+import { ISurvey, SurveyParams, SurveyData, VoteData } from "./interfaces/ISurvey.sol";
+import { IAnalyze, QueryData, Filter, VerifierType } from "./interfaces/IAnalyze.sol";
+
+contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
     uint256 private _surveyIds;
 
     mapping(uint256 => SurveyParams) public surveyParams;
@@ -50,6 +53,7 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
     ) internal {
         require(surveyId < _surveyIds, "invalid");
         require(!hasVoted[surveyId][msg.sender], "already_voted");
+        require(surveyParams[surveyId].metadataTypes.length == metadata.length, "Invalid length");
 
         // Check if user is whitelisted
         if (surveyParams[surveyId].isWhitelisted) {
@@ -61,6 +65,18 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
         }
 
         // Check metadata type
+        uint256[] memory checkedMetadatValue = new uint256[](surveyParams[surveyId].metadataTypes.length);
+        for (uint256 i = 0; i < surveyParams[surveyId].metadataTypes.length; i++) {
+            MetadataType _type = surveyParams[surveyId].metadataTypes[i];
+
+            if (_type == MetadataType.BOOLEAN) {
+                ebool val = TFHE.asEbool(metadata[i], inputProof);
+                checkedMetadatValue[i] = ebool.unwrap(val);
+            } else if (_type == MetadataType.UINT256) {
+                euint256 val = TFHE.asEuint256(metadata[i], inputProof);
+                checkedMetadatValue[i] = euint256.unwrap(val);
+            }
+        }
 
         // (v1) no verification on the metadata yet!
 
@@ -76,7 +92,7 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
         TFHE.allowThis(surveyData[surveyId].encryptedResponses);
 
         // Save vote info
-        VoteData memory _voteData = VoteData({ data: eVote, metadata: metadata });
+        VoteData memory _voteData = VoteData({ data: eVote, metadata: checkedMetadatValue });
         voteData[surveyId].push(_voteData);
 
         // Add user to the hasvoted list
@@ -128,6 +144,180 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
         gatewayRequestId[_requestId] = surveyId;
     }
 
+    //////////////////////////////////////////////////////////////////
+    /// Analyse the data
+    //////////////////////////////////////////////////////////////////
+
+    uint256 private _queryIds;
+    mapping(uint256 => QueryData) public queryData;
+
+    function createQuery(uint256 voteId, Filter[][] memory params) external returns (uint256) {
+        // FIXME: add constraint on the current vote.
+        // Do we want to add constraint on the current vote?
+        // Min threshold maybe?
+
+        // // FIXME: Need to verify the input filter compared to the type
+        // Filter[][] storage _filters = new Filter[][](params.length);
+        // for (uint256 i = 0; i < params.length; i++) {
+        //     _filters[i] = new Filter[](params[i].length);
+        //     for (uint256 j = 0; j < params[i].length; j++) {
+        //         // Copy individual Filter struct
+        //         _filters[i][j] = params[i][j];
+        //     }
+        // }
+
+        euint256 pendingResult = TFHE.asEuint256(0);
+        euint256 numberOfSelected = TFHE.asEuint256(0);
+
+        TFHE.allowThis(pendingResult);
+        TFHE.allowThis(numberOfSelected);
+
+        // FIXME: here issue ----
+        queryData[_queryIds] = QueryData({
+            voteId: voteId,
+            filters: params,
+            pendingResult: pendingResult,
+            numberOfSelected: numberOfSelected,
+            cursor: 0,
+            isFinished: false,
+            isSucceed: false,
+            selectedCount: 0,
+            result: 0
+        });
+
+        _queryIds++;
+
+        // FIXME: emit event
+
+        return _queryIds - 1;
+    }
+
+    function _applyFilter(Filter memory filter, uint256 userData) internal returns (ebool) {
+        // FIXME: when building I have an issue here as it seems I cannot build it in legacy mode
+        // "--via-ir" need to provide this option.
+
+        ebool isVerified;
+
+        VerifierType _verifierType = filter.verifier;
+
+        if (_verifierType == VerifierType.LargerThan) {
+            // TODO:
+
+            // TODO: for tomorrow need to see how I want to handle those value.
+            // Should the analyst pass it in clear
+            // Or should it be enctrypted
+            // Nevertheless when comparing it should be the same type
+
+            euint256 eVal = euint256.wrap(abi.decode(filter.value, (uint256))); // TFHE.asEuint256();
+            // euint256 eUsr = TFHE.asEuint256(userData); // euint256.wrap(userData); // TFHE.asEuint256();
+            euint256 eUsr = euint256.wrap(userData);
+
+            isVerified = TFHE.gt(eUsr, eVal);
+        } else if (_verifierType == VerifierType.SmallerThan) {
+            // TODO:
+        } else {
+            // FIXME:
+        }
+
+        return isVerified;
+    }
+
+    function _applyMetadataFilter(Filter[][] memory filters, uint256[] memory userFilter) internal returns (ebool) {
+        // By default, it is accepted
+        ebool isValid = TFHE.asEbool(true);
+
+        // In this part, we can assume the filter are valid, as we will verify them before
+        for (uint256 i = 0; i < filters.length; i++) {
+            // Apply the filter on the user metadata
+            for (uint256 j = 0; j < filters[i].length; j++) {
+                isValid = TFHE.and(isValid, _applyFilter(filters[i][j], userFilter[i]));
+
+                // ebool isVerified;
+
+                // // VerifierType _verifierType = filters[i][j].verifier;
+
+                // if (filters[i][j].verifier == VerifierType.LargerThan) {
+                //     // TODO:
+
+                //     euint256 eVal = euint256.wrap(abi.decode(filters[i][j].value, (uint256))); // TFHE.asEuint256();
+                //     // euint256 eUsr = TFHE.asEuint256(userData); // euint256.wrap(userData); // TFHE.asEuint256();
+                //     euint256 eUsr = euint256.wrap(userFilter[i]);
+
+                //     isVerified = TFHE.gt(eUsr, eVal);
+                // } else if (filters[i][j].verifier == VerifierType.SmallerThan) {
+                //     // TODO:
+                // } else {
+                //     // FIXME:
+                // }
+
+                // isValid = TFHE.and(isValid, isVerified);
+            }
+        }
+
+        return isValid;
+    }
+
+    // FIXME: Possibility to add another functions that will take a integer as parameter
+    // allowing us to handle the iteration logic with a custom integer.
+    function executeQuery(uint256 queryId) external {
+        require(queryId < _queryIds, "INVALID_QUERY_ID");
+        // FIXME: Other things in mind??
+
+        uint256 voteId = queryData[queryId].voteId;
+
+        uint256 limit = 10;
+        uint256 start = queryData[queryId].cursor;
+
+        while (
+            queryData[queryId].cursor < start + limit && // Limit the iterator
+            queryData[queryId].cursor < voteData[voteId].length // Still data to read
+        ) {
+            // Process
+            VoteData memory data = voteData[voteId][queryData[queryId].cursor];
+
+            // Apply the filter
+            // ebool takeIt = _applyMetadataFilter(queryData[queryId].filters, data.metadata);
+            ebool takeIt = TFHE.asEbool(true);
+
+            euint256 increment = TFHE.select(takeIt, TFHE.asEuint256(1), TFHE.asEuint256(0));
+            euint256 addValue = TFHE.select(takeIt, data.data, TFHE.asEuint256(0));
+
+            queryData[queryId].numberOfSelected = TFHE.add(queryData[queryId].numberOfSelected, increment);
+
+            queryData[queryId].pendingResult = TFHE.add(queryData[queryId].pendingResult, addValue);
+
+            queryData[queryId].cursor++;
+        }
+
+        // In case of last iteration - Potentially reveal the value
+        // FIXME: handle it
+
+        // if (queryData[queryId].cursor >= voteData[voteId].length) {
+        //     // FIXME: double check that we do not have a potential leak
+        //     // Else we assume that we reach a correct threshold and does not impact privacy
+
+        //     TFHE.allowThis(queryData[queryId].numberOfSelected);
+        //     TFHE.allowThis(queryData[queryId].pendingResult);
+
+        //     uint256[] memory cts = new uint256[](2);
+        //     cts[0] = Gateway.toUint256(queryData[queryId].numberOfSelected);
+        //     cts[0] = Gateway.toUint256(queryData[queryId].pendingResult);
+        //     uint256 _requestId = Gateway.requestDecryption(
+        //         cts,
+        //         this.gatewayDecryptAnalyse.selector, // FIXME: naming
+        //         0,
+        //         block.timestamp + 100,
+        //         false
+        //     );
+
+        //     gatewayRequestId[_requestId] = queryId;
+        // }
+    }
+
+    //////////////////////////////////////////////////////////////////
+    /// Gateway Callback Functions
+    //////////////////////////////////////////////////////////////////
+
     /// Gateway Callback - Decrypt the vote result
     function gatewayDecryptVoteResult(uint256 requestId, uint256 result) public onlyGateway {
         uint256 surveyId = gatewayRequestId[requestId];
@@ -136,6 +326,18 @@ contract Survey is ISurvey, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, Ga
         // emit GatewayTotalValueRequested(_gatewayProcess[requestId], result);
     }
 
-    // TODO: Need to have a cursor mechanism in case too large
-    // function analyse(uint256 vodeId, Filter[][] memory params) external {}
+    ///
+    function gatewayDecryptAnalyse(
+        uint256 requestId,
+        uint256 numberOfSelected,
+        uint256 pendingResult
+    ) public onlyGateway {
+        // queryData[requestId].isFinished
+
+        // FIXME: have better naming please
+        queryData[requestId].selectedCount = numberOfSelected;
+        queryData[requestId].result = pendingResult;
+
+        // emit event
+    }
 }
