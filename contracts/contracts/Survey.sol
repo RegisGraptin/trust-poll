@@ -72,9 +72,13 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             if (_type == MetadataType.BOOLEAN) {
                 ebool val = TFHE.asEbool(metadata[i], inputProof);
                 checkedMetadatValue[i] = ebool.unwrap(val);
+
+                TFHE.allowThis(val); // FIXME:
             } else if (_type == MetadataType.UINT256) {
                 euint256 val = TFHE.asEuint256(metadata[i], inputProof);
                 checkedMetadatValue[i] = euint256.unwrap(val);
+
+                TFHE.allowThis(val); // FIXME:
             }
         }
 
@@ -82,6 +86,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         // Add a new vote
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
+
+        TFHE.allowThis(eVote);
 
         // TODO:: Do we need to authorize user access or can skip it?
 
@@ -128,8 +134,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     function revealResults(uint256 surveyId) external {
         // FIXME: add condition
         // require(block.timestamp == 0 || block.timestamp > endVoteTime, "VOTE_PENDING");
-
-        TFHE.allowThis(surveyData[surveyId].encryptedResponses);
 
         uint256[] memory cts = new uint256[](1);
         cts[0] = Gateway.toUint256(surveyData[surveyId].encryptedResponses);
@@ -208,6 +212,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             // Or should it be enctrypted
             // Nevertheless when comparing it should be the same type
 
+            // FIXME: to be done here maybe!!
             euint256 eVal = euint256.wrap(abi.decode(filter.value, (uint256))); // TFHE.asEuint256();
             // euint256 eUsr = TFHE.asEuint256(userData); // euint256.wrap(userData); // TFHE.asEuint256();
             euint256 eUsr = euint256.wrap(userData);
@@ -279,8 +284,18 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             // ebool takeIt = _applyMetadataFilter(queryData[queryId].filters, data.metadata);
             ebool takeIt = TFHE.asEbool(true);
 
-            euint256 increment = TFHE.select(takeIt, TFHE.asEuint256(1), TFHE.asEuint256(0));
-            euint256 addValue = TFHE.select(takeIt, data.data, TFHE.asEuint256(0));
+            euint256 one = TFHE.asEuint256(1);
+            euint256 zero = TFHE.asEuint256(0);
+
+            TFHE.allowThis(one);
+            TFHE.allowThis(zero);
+            TFHE.allowThis(data.data);
+
+            euint256 increment = TFHE.select(takeIt, one, zero);
+            euint256 addValue = TFHE.select(takeIt, data.data, zero);
+
+            TFHE.allowThis(increment);
+            TFHE.allowThis(addValue);
 
             queryData[queryId].numberOfSelected = TFHE.add(queryData[queryId].numberOfSelected, increment);
 
@@ -292,26 +307,26 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // In case of last iteration - Potentially reveal the value
         // FIXME: handle it
 
-        // if (queryData[queryId].cursor >= voteData[voteId].length) {
-        //     // FIXME: double check that we do not have a potential leak
-        //     // Else we assume that we reach a correct threshold and does not impact privacy
+        if (queryData[queryId].cursor >= voteData[voteId].length) {
+            // FIXME: double check that we do not have a potential leak
+            // Else we assume that we reach a correct threshold and does not impact privacy
 
-        //     TFHE.allowThis(queryData[queryId].numberOfSelected);
-        //     TFHE.allowThis(queryData[queryId].pendingResult);
+            // TFHE.allowThis(queryData[queryId].numberOfSelected);
+            // TFHE.allowThis(queryData[queryId].pendingResult);
 
-        //     uint256[] memory cts = new uint256[](2);
-        //     cts[0] = Gateway.toUint256(queryData[queryId].numberOfSelected);
-        //     cts[0] = Gateway.toUint256(queryData[queryId].pendingResult);
-        //     uint256 _requestId = Gateway.requestDecryption(
-        //         cts,
-        //         this.gatewayDecryptAnalyse.selector, // FIXME: naming
-        //         0,
-        //         block.timestamp + 100,
-        //         false
-        //     );
+            uint256[] memory cts = new uint256[](2);
+            cts[0] = Gateway.toUint256(queryData[queryId].numberOfSelected);
+            cts[1] = Gateway.toUint256(queryData[queryId].pendingResult);
+            uint256 _requestId = Gateway.requestDecryption(
+                cts,
+                this.gatewayDecryptAnalyse.selector, // FIXME: naming
+                0,
+                block.timestamp + 100,
+                false
+            );
 
-        //     gatewayRequestId[_requestId] = queryId;
-        // }
+            gatewayRequestId[_requestId] = queryId;
+        }
     }
 
     //////////////////////////////////////////////////////////////////
@@ -334,9 +349,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     ) public onlyGateway {
         // queryData[requestId].isFinished
 
+        uint256 queryId = gatewayRequestId[requestId];
+
         // FIXME: have better naming please
-        queryData[requestId].selectedCount = numberOfSelected;
-        queryData[requestId].result = pendingResult;
+        queryData[queryId].selectedCount = numberOfSelected;
+        queryData[queryId].result = pendingResult;
 
         // emit event
     }

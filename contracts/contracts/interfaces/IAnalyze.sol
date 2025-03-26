@@ -12,9 +12,11 @@ enum VerifierType {
 
 // FIXME: Should we apply a mapping on the type and the acceptable filter?
 
+// FIXME: we need to have an encrypted value which bring some qustion
+
 struct Filter {
     VerifierType verifier;
-    bytes value; // FIXME: we need to have an encrypted value which bring some qustion
+    bytes value;
 }
 
 // TODO: Do we want the query created by someone public?

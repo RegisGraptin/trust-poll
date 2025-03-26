@@ -1,6 +1,6 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
-import { network } from "hardhat";
+import { ethers, network } from "hardhat";
 
 import { awaitAllDecryptionResults } from "../asyncDecrypt";
 import { ACCOUNT_NAMES } from "../constants";
@@ -204,5 +204,28 @@ describe("Survey", function () {
 
     // Analyse it
     // Analysts could then view aggregated results, for example, the breakdown of votes from men over 45.
+
+    // LargerThan
+
+    const filters = [
+      [
+        {
+          verifier: 0, // LargerThan
+          value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [30]),
+        },
+      ],
+    ];
+    await this.survey.createQuery(0, filters);
+
+    // Now try to execute the query
+    await this.survey.executeQuery(0);
+    await awaitAllDecryptionResults(); // Wait for the gateway
+
+    // TODO: Now read the result
+    const queryData = await this.survey.queryData(0);
+
+    console.log(queryData);
+    // uint256 selectedCount;
+    // uint256 result;
   });
 });
