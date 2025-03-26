@@ -86,8 +86,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         // Add a new vote
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
-
-        TFHE.allowThis(eVote);
+        TFHE.allowThis(eVote); // TODO: Need to have authorization to do operation
 
         // TODO:: Do we need to authorize user access or can skip it?
 
@@ -173,8 +172,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         euint256 pendingResult = TFHE.asEuint256(0);
         euint256 numberOfSelected = TFHE.asEuint256(0);
 
-        TFHE.allowThis(pendingResult);
-        TFHE.allowThis(numberOfSelected);
+        // TODO: seems not mandatory, need more info
+        // TFHE.allowThis(pendingResult);
+        // TFHE.allowThis(numberOfSelected);
 
         // FIXME: here issue ----
         queryData[_queryIds] = QueryData({
@@ -201,6 +201,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // "--via-ir" need to provide this option.
 
         ebool isVerified;
+        // TFHE.allowThis(isVerified);
 
         VerifierType _verifierType = filter.verifier;
 
@@ -213,9 +214,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             // Nevertheless when comparing it should be the same type
 
             // FIXME: to be done here maybe!!
-            euint256 eVal = euint256.wrap(abi.decode(filter.value, (uint256))); // TFHE.asEuint256();
+            euint256 eVal = TFHE.asEuint256(abi.decode(filter.value, (uint256))); // TFHE.asEuint256();
+
             // euint256 eUsr = TFHE.asEuint256(userData); // euint256.wrap(userData); // TFHE.asEuint256();
             euint256 eUsr = euint256.wrap(userData);
+            // TFHE.allowThis(eUsr);
 
             isVerified = TFHE.gt(eUsr, eVal);
         } else if (_verifierType == VerifierType.SmallerThan) {
@@ -230,6 +233,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     function _applyMetadataFilter(Filter[][] memory filters, uint256[] memory userFilter) internal returns (ebool) {
         // By default, it is accepted
         ebool isValid = TFHE.asEbool(true);
+        // TFHE.allowThis(isValid);
 
         // In this part, we can assume the filter are valid, as we will verify them before
         for (uint256 i = 0; i < filters.length; i++) {
@@ -273,6 +277,10 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         uint256 limit = 10;
         uint256 start = queryData[queryId].cursor;
 
+        // FIXME: Simplify all the code
+        // Please: first check that you understand the allowthis --> which one do I need!
+        // To avoid potential leaks!
+
         while (
             queryData[queryId].cursor < start + limit && // Limit the iterator
             queryData[queryId].cursor < voteData[voteId].length // Still data to read
@@ -281,21 +289,15 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             VoteData memory data = voteData[voteId][queryData[queryId].cursor];
 
             // Apply the filter
-            // ebool takeIt = _applyMetadataFilter(queryData[queryId].filters, data.metadata);
-            ebool takeIt = TFHE.asEbool(true);
+            ebool takeIt = _applyMetadataFilter(queryData[queryId].filters, data.metadata);
+            // TFHE.allowThis(takeIt);
+            // ebool takeIt = TFHE.asEbool(true);
 
             euint256 one = TFHE.asEuint256(1);
             euint256 zero = TFHE.asEuint256(0);
 
-            TFHE.allowThis(one);
-            TFHE.allowThis(zero);
-            TFHE.allowThis(data.data);
-
             euint256 increment = TFHE.select(takeIt, one, zero);
             euint256 addValue = TFHE.select(takeIt, data.data, zero);
-
-            TFHE.allowThis(increment);
-            TFHE.allowThis(addValue);
 
             queryData[queryId].numberOfSelected = TFHE.add(queryData[queryId].numberOfSelected, increment);
 

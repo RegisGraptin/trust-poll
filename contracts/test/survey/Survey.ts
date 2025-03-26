@@ -211,7 +211,7 @@ describe("Survey", function () {
       [
         {
           verifier: 0, // LargerThan
-          value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [30]),
+          value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [50]),
         },
       ],
     ];
