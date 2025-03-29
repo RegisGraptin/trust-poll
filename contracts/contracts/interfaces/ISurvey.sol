@@ -14,17 +14,32 @@ enum SurveyType {
 struct SurveyData {
     uint256 participantCount; // Number of participants
     euint256 encryptedResponses; // Encrypted survey data
+    uint256 lastDecryptedCount;
     uint256 decryptedResponses;
 }
+
+// FIXME: should merge (surveyParams & SurveyData)
+// Or have it more explicitly defined
 
 struct SurveyParams {
     string surveyPrompt;
     SurveyType surveyType;
+    /// @notice Indicates if the survey is restricted to a whitelisted users
     bool isWhitelisted;
+    /// @notice Merkle root hash for allowlist verification (if restricted)
     bytes32 whitelistRootHash;
+    /// @notice Number of participant
+    uint256 numberOfParticipants;
+    /// @notice UNIX timestamp when survey automatically closes
     uint256 surveyEndTime;
-    uint256 responseThreshold;
+    /// @notice Minimum number of responses required before analysis/reveal
+    uint256 minResponseThreshold;
+    /// @notice List of metadata requirements from participants
     MetadataType[] metadataTypes;
+    /// @notice Authorize to reveal running survey result
+    bool authorizePendingReveal;
+    /// @notice Authorize to do analysis when the survey is still running
+    bool authorizePendingAnalyze;
 }
 
 struct VoteData {
@@ -33,6 +48,24 @@ struct VoteData {
 }
 
 interface ISurvey {
+    error InvalidSurveyPrompt();
+    error InvalidSurveyWhitelist();
+    error InvalidEndTime();
+    error InvalidResponseThreshold();
+    error InvalidMetadata();
+
+    error InvalidNumberOfParticipants(); // TODO : Adjust naming
+
+    error ThresholdNeeded(); // TODO: better naming please
+
+    error InvalidRevealAction();
+
+    error UnfinishedSurveyPeriod();
+
+    event SurveyCreated(uint256 indexed surveyId, address organizer, SurveyType surveyType, string surveyPrompt);
+
+    event EntrySubmitted(uint256 indexed surveyId, address user);
+
     /// @notice Create a new survey.
     /// @param params Parameter of the Survey.
     /// @return surveyId The id of the survey.

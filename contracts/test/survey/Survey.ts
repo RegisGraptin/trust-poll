@@ -1,13 +1,11 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
-import { ethers, network } from "hardhat";
+import { ethers } from "hardhat";
 
 import { awaitAllDecryptionResults } from "../asyncDecrypt";
 import { ACCOUNT_NAMES } from "../constants";
 import { createInstance } from "../instance";
-import { reencryptEuint64 } from "../reencrypt";
 import { getSigners, initSigners } from "../signers";
-import { debug } from "../utils";
 import { deploySurveyFixture } from "./Survey.fixture";
 
 enum SurveyType {
@@ -19,6 +17,43 @@ enum MetadataType {
   BOOLEAN = 0,
   UINT256 = 1,
 }
+
+const SURVEY_END_TIME = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
+
+const validSurveyParam = {
+  surveyPrompt: "Are you in favor of privacy?",
+  surveyType: SurveyType.POLLING,
+  isWhitelisted: false,
+  whitelistRootHash: new Uint8Array(32),
+  numberOfParticipants: 0, // Optional parameter - need to be defined when whitelisted activated
+  surveyEndTime: SURVEY_END_TIME,
+  responseThreshold: 4,
+  metadataTypes: [],
+};
+
+const invalidSurveyParamsTestCases = [
+  {
+    name: "empty survey prompt",
+    params: { surveyPrompt: "" },
+    error: "InvalidSurveyPrompt",
+  },
+  {
+    name: "is whitelisted but no root hash",
+    params: { isWhitelisted: true, whitelistRootHash: new Uint8Array(32) },
+    error: "InvalidSurveyWhitelist",
+  },
+  {
+    name: "past end time",
+    params: { surveyEndTime: Math.floor(Date.now() / 1000) - 1000 },
+    error: "InvalidEndTime",
+  },
+  {
+    name: "zero response threshold",
+    params: { responseThreshold: 0 },
+    error: "InvalidResponseThreshold",
+  },
+  // Add more test cases as needed
+];
 
 describe("Survey", function () {
   before(async function () {
@@ -83,26 +118,16 @@ describe("Survey", function () {
   });
 
   it("should create a new survey", async function () {
-    const surveyParam = {
-      surveyPrompt: "Are you in favor of privacy?",
-      surveyType: SurveyType.POLLING,
-      isWhitelisted: false,
-      whitelistRootHash: new Uint8Array(32),
-      surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // Current timestamp + 7 days in seconds
-      responseThreshold: 100,
-      metadataTypes: [],
-    };
-
-    const transaction = await this.survey.createSurvey(surveyParam);
+    const transaction = await this.survey.createSurvey(validSurveyParam);
     await transaction.wait();
 
     // Check the survey information at the index 0
     const surveyData = await this.survey.surveyParams(0);
 
     expect(surveyData[0]).to.be.equals("Are you in favor of privacy?");
-    expect(surveyData[2]).to.be.false; // Now whitelist
-    expect(surveyData[4]).to.be.equals(Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60);
-    expect(surveyData[5]).to.be.equals(100);
+    expect(surveyData[2]).to.be.false;
+    expect(surveyData[5]).to.be.equals(SURVEY_END_TIME);
+    expect(surveyData[6]).to.be.equals(4);
 
     // Check that the user can vote
     expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.false;
@@ -110,24 +135,18 @@ describe("Survey", function () {
     expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.true;
   });
 
-  it("should handle polling survey", async function () {
-    // FIXME: need to fetch the available signers
+  invalidSurveyParamsTestCases.forEach(({ name, params, error }) => {
+    it(`should reject invalid survey's parameters: ${name}`, async function () {
+      const invalidParams = { ...validSurveyParam, ...params };
+      await expect(this.survey.createSurvey(invalidParams)).to.be.revertedWithCustomError(this.survey, error);
+    });
+  });
+
+  it("should handle polling survey with no metadata", async function () {
     const pollingVotes = [true, true, false, true];
     const voterNames = ACCOUNT_NAMES;
 
-    // FIXME: (v2) add metadata assignement
-
-    const surveyParam = {
-      surveyPrompt: "Are you in favor of privacy?",
-      surveyType: SurveyType.POLLING,
-      isWhitelisted: false,
-      whitelistRootHash: new Uint8Array(32),
-      surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // Current timestamp + 7 days in seconds
-      responseThreshold: 4, // Example value, replace with actual threshold
-      metadataTypes: [], // Example value, replace with actual metadata types
-    };
-
-    const transaction = await this.survey.createSurvey(surveyParam);
+    const transaction = await this.survey.createSurvey(validSurveyParam);
     await transaction.wait();
 
     // Do the voting
@@ -144,8 +163,9 @@ describe("Survey", function () {
     // Verify the polling data
     const surveyDataAfterVoting = await this.survey.surveyData(0);
 
+    // FIXME: have a structure automated to better handle position change when update
     expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
-    expect(surveyDataAfterVoting[2]).to.be.equals(pollingVotes.filter(Boolean).length);
+    expect(surveyDataAfterVoting[3]).to.be.equals(pollingVotes.filter(Boolean).length);
   });
 
   it("should handle polling survey with metadata", async function () {
@@ -165,12 +185,7 @@ describe("Survey", function () {
     const surveyMetadataTypes = [MetadataType.UINT256, MetadataType.BOOLEAN];
 
     const surveyParam = {
-      surveyPrompt: "Are you in favor of privacy?",
-      surveyType: SurveyType.POLLING,
-      isWhitelisted: false,
-      whitelistRootHash: new Uint8Array(32),
-      surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // Current timestamp + 7 days in seconds
-      responseThreshold: 4,
+      ...validSurveyParam,
       metadataTypes: surveyMetadataTypes,
     };
 
@@ -199,8 +214,9 @@ describe("Survey", function () {
     // Verify the polling data
     const surveyDataAfterVoting = await this.survey.surveyData(0);
 
+    // FIXME: same have structure please
     expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
-    expect(surveyDataAfterVoting[2]).to.be.equals(pollingVotes.filter(Boolean).length);
+    expect(surveyDataAfterVoting[3]).to.be.equals(pollingVotes.filter(Boolean).length);
 
     // Analyse it
     // Analysts could then view aggregated results, for example, the breakdown of votes from men over 45.

@@ -24,14 +24,13 @@ struct Filter {
 // Or we want transparency on the user data requested?
 
 struct QueryData {
-    uint256 voteId;
+    uint256 surveyId;
     Filter[][] filters;
     euint256 pendingResult;
     euint256 numberOfSelected; // TODO: naming counting ?
-    uint256 cursor;
+    uint256 cursor; // Better Naing PLS
     // FIXME: Need to update the flag
     bool isFinished;
-    bool isSucceed;
     // Gateway id maybe?
     uint256 selectedCount;
     uint256 result;
@@ -41,17 +40,18 @@ struct QueryData {
 // 2. Iterate over it
 // 2.a Before revealing the data, double check if not sensible
 // 3. Reveal the result or not
-interface IAnalyze {
-    function createQuery(uint256 voteId, Filter[][] memory params) external returns (uint256);
-
-    function executeQuery(uint256 queryId) external;
-
-    // FIXME: add the function access
-    // function resultQuery() external returns (bytes memory);
-}
 
 // Simple int
 // Polling yes/no -> yes vote
 // Benchmark -> avg metric
 
-// Issue when polling has multiple value.
+interface IAnalyze {
+    error UnauthorizePendingQuery();
+
+    function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256);
+
+    function executeQuery(uint256 queryId) external;
+
+    // FIXME:
+    // function getQueryData(uint256 queryId) external view returns (QueryData memory);
+}

@@ -70,6 +70,7 @@ describe("Survey", function () {
       surveyType: SurveyType.POLLING,
       isWhitelisted: true,
       whitelistRootHash: this.whitelistedTree.root,
+      numberOfParticipants: this.whitelistedTree.values.length,
       surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // +7 days
       responseThreshold: 4,
       metadataTypes: [],
@@ -88,5 +89,30 @@ describe("Survey", function () {
     await this.submitPollingEntry(this.signers.alice, 0, true);
 
     expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.true;
+  });
+
+  it("should not allow bypass whitelist by other entry", async function () {
+    const surveyParam = {
+      surveyPrompt: "Are you part of the group?",
+      surveyType: SurveyType.POLLING,
+      isWhitelisted: true,
+      whitelistRootHash: this.whitelistedTree.root,
+      numberOfParticipants: this.whitelistedTree.values.length,
+      surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // +7 days
+      responseThreshold: 4,
+      metadataTypes: [],
+    };
+
+    const transaction = await this.survey.createSurvey(surveyParam);
+    await transaction.wait();
+
+    const nonAuthorizeSigner = this.signers.eve;
+
+    const input = this.fhevm.createEncryptedInput(this.contractAddress, nonAuthorizeSigner.address);
+    const inputs = await input.add256(Number(0)).encrypt();
+
+    expect(this.survey.connect(this.signers.eve).submitEntry(0, inputs.handles[0], [], inputs.inputProof)).to.be
+      .reverted;
+    expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.false;
   });
 });

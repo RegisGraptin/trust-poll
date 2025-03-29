@@ -23,8 +23,20 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     mapping(uint256 => VoteData[]) voteData;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
 
+    //////////////////////////////////////////////////////////////////
+    /// Survey management
+    //////////////////////////////////////////////////////////////////
+
     function createSurvey(SurveyParams memory params) external returns (uint256) {
-        // FIXME: check params value
+        if (bytes(params.surveyPrompt).length == 0) revert InvalidSurveyPrompt();
+        if (params.isWhitelisted && params.whitelistRootHash == bytes32(0)) {
+            revert InvalidSurveyWhitelist();
+        }
+        if (params.isWhitelisted && params.numberOfParticipants < 2) {
+            revert InvalidNumberOfParticipants();
+        }
+        if (params.surveyEndTime <= block.timestamp) revert InvalidEndTime();
+        if (params.minResponseThreshold <= 3) revert InvalidResponseThreshold();
 
         euint256 eResponses = TFHE.asEuint256(0);
         TFHE.allowThis(eResponses);
@@ -33,11 +45,12 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         surveyData[_surveyIds] = SurveyData({
             participantCount: 0,
             encryptedResponses: eResponses,
+            lastDecryptedCount: 0,
             decryptedResponses: 0 // FIXME: add indicator for decrypted or not
         });
-        _surveyIds++;
 
-        // TODO: emit event
+        emit SurveyCreated(_surveyIds, msg.sender, params.surveyType, params.surveyPrompt);
+        _surveyIds++;
 
         return _surveyIds - 1;
     }
@@ -51,11 +64,15 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         bytes calldata inputProof,
         bytes32[] memory whitelistProof
     ) internal {
+        // require(block.timestamp == 0 || block.timestamp > endVoteTime, "VOTE_PENDING");
         require(surveyId < _surveyIds, "invalid");
         require(!hasVoted[surveyId][msg.sender], "already_voted");
         require(surveyParams[surveyId].metadataTypes.length == metadata.length, "Invalid length");
 
-        // Check if user is whitelisted
+        // TODO: Defined in readme explicitaly all the parameter
+        // params.surveyEndTime <= block.timestamp
+
+        // In case of whitelisted survey, check the user access
         if (surveyParams[surveyId].isWhitelisted) {
             bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender))));
             require(
@@ -72,28 +89,20 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             if (_type == MetadataType.BOOLEAN) {
                 ebool val = TFHE.asEbool(metadata[i], inputProof);
                 checkedMetadatValue[i] = ebool.unwrap(val);
-
-                TFHE.allowThis(val); // FIXME:
+                TFHE.allowThis(val);
             } else if (_type == MetadataType.UINT256) {
                 euint256 val = TFHE.asEuint256(metadata[i], inputProof);
                 checkedMetadatValue[i] = euint256.unwrap(val);
-
-                TFHE.allowThis(val); // FIXME:
+                TFHE.allowThis(val);
             }
         }
 
-        // (v1) no verification on the metadata yet!
-
         // Add a new vote
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
-        TFHE.allowThis(eVote); // TODO: Need to have authorization to do operation
-
-        // TODO:: Do we need to authorize user access or can skip it?
+        TFHE.allowThis(eVote);
 
         surveyData[surveyId].encryptedResponses = TFHE.add(surveyData[surveyId].encryptedResponses, eVote);
         surveyData[surveyId].participantCount++;
-
-        // TODO :: Understand more deeply what does the allow this
         TFHE.allowThis(surveyData[surveyId].encryptedResponses);
 
         // Save vote info
@@ -104,6 +113,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         hasVoted[surveyId][msg.sender] = true;
 
         // Emit event
+        emit EntrySubmitted(surveyId, msg.sender);
     }
 
     function submitEntry(
@@ -112,7 +122,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         einput[] memory metadata,
         bytes calldata inputProof
     ) external {
-        // FIXME: protect and double check no by pass whitelist or whatever
         _submitEntry(surveyId, eInputVote, metadata, inputProof, new bytes32[](0));
     }
 
@@ -127,12 +136,38 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     }
 
     mapping(uint256 requestId => uint256 surveyId) gatewayRequestId;
-
-    mapping(uint256 surveyId => uint256 result) surveyResult;
+    mapping(uint256 requestId => uint256) countRequested;
 
     function revealResults(uint256 surveyId) external {
-        // FIXME: add condition
-        // require(block.timestamp == 0 || block.timestamp > endVoteTime, "VOTE_PENDING");
+        if (surveyParams[surveyId].authorizePendingReveal) {
+            // Be sure that the next time we ask to reveal, we have enough vote
+            if (
+                (surveyData[surveyId].lastDecryptedCount + surveyParams[surveyId].minResponseThreshold) >
+                surveyData[surveyId].participantCount
+            ) {
+                revert ThresholdNeeded();
+            }
+
+            // In a whitelisted scenario, we want to avoid the scenario where we do not have enough
+            // participants which would leak the vote value.
+            if (
+                surveyParams[surveyId].isWhitelisted &&
+                surveyData[surveyId].participantCount >
+                (surveyParams[surveyId].numberOfParticipants - surveyParams[surveyId].minResponseThreshold)
+            ) {
+                // An exception if we have all the participants that have voted
+                if (
+                    surveyData[surveyId].participantCount !=
+                    (surveyParams[surveyId].numberOfParticipants - surveyParams[surveyId].minResponseThreshold)
+                ) {
+                    revert InvalidRevealAction();
+                }
+            }
+        } else {
+            if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
+                revert UnfinishedSurveyPeriod();
+            }
+        }
 
         uint256[] memory cts = new uint256[](1);
         cts[0] = Gateway.toUint256(surveyData[surveyId].encryptedResponses);
@@ -154,7 +189,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     uint256 private _queryIds;
     mapping(uint256 => QueryData) public queryData;
 
-    function createQuery(uint256 voteId, Filter[][] memory params) external returns (uint256) {
+    function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256) {
+        // TODO: At what time could we consider starting to do analytics on the data?
+        // Can we authorize it from the beginning?
+        // Should we wait a certain number of votes
+
         // FIXME: add constraint on the current vote.
         // Do we want to add constraint on the current vote?
         // Min threshold maybe?
@@ -169,22 +208,56 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         //     }
         // }
 
+        // Check if the survey authorize "pending analysis".
+        // TODO: Do we consider when all the people has voted to be finished?
+        if (surveyParams[surveyId].authorizePendingAnalyze && block.timestamp < surveyParams[surveyId].surveyEndTime) {
+            revert UnauthorizePendingQuery();
+        }
+
         euint256 pendingResult = TFHE.asEuint256(0);
         euint256 numberOfSelected = TFHE.asEuint256(0);
 
-        // TODO: seems not mandatory, need more info
-        // TFHE.allowThis(pendingResult);
-        // TFHE.allowThis(numberOfSelected);
+        // Define the limit
+
+        uint256 limit;
+
+        if (!surveyParams[surveyId].authorizePendingAnalyze) {
+            if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
+                revert InvalidRevealAction(); // TODO: Change naming
+            }
+            // Safely choose the whole participants
+            limit = surveyData[surveyId].participantCount;
+        } else {
+            // Need to authorize only based on a threshold
+            // FIXME: need to link with traditional reveal
+            // as it can leak some data
+        }
+
+        // When survey is finished
+
+        // When whitelisted, we expect a total number of participants
+
+        // Add a limit
+        // We do not have a dynamic query anymore. From the start we are defining the limit
+        // of the data we can analyse.
+        // If whitelist -
+        //      - If complete take it
+        //      -
+
+        // 10 // 3 => 3 / 1
+        // 7 authorize
+        // ((total - theshold) / threshold) * threshold
+        // 7 / 3 = 2 => * 3 => 6
+        // 6 / 3 = 2 => * 3 => 6
 
         // FIXME: here issue ----
         queryData[_queryIds] = QueryData({
-            voteId: voteId,
+            surveyId: surveyId,
             filters: params,
             pendingResult: pendingResult,
             numberOfSelected: numberOfSelected,
             cursor: 0,
             isFinished: false,
-            isSucceed: false,
             selectedCount: 0,
             result: 0
         });
@@ -197,28 +270,17 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     }
 
     function _applyFilter(Filter memory filter, uint256 userData) internal returns (ebool) {
-        // FIXME: when building I have an issue here as it seems I cannot build it in legacy mode
-        // "--via-ir" need to provide this option.
-
         ebool isVerified;
-        // TFHE.allowThis(isVerified);
 
         VerifierType _verifierType = filter.verifier;
 
         if (_verifierType == VerifierType.LargerThan) {
-            // TODO:
+            // TODO: Depending of th number of data, we can have a huge cost here
+            // by doing abi.decode() and asEuint256 operation.
+            // Need to think a smarter approach, maybe?
+            euint256 eVal = TFHE.asEuint256(abi.decode(filter.value, (uint256)));
 
-            // TODO: for tomorrow need to see how I want to handle those value.
-            // Should the analyst pass it in clear
-            // Or should it be enctrypted
-            // Nevertheless when comparing it should be the same type
-
-            // FIXME: to be done here maybe!!
-            euint256 eVal = TFHE.asEuint256(abi.decode(filter.value, (uint256))); // TFHE.asEuint256();
-
-            // euint256 eUsr = TFHE.asEuint256(userData); // euint256.wrap(userData); // TFHE.asEuint256();
             euint256 eUsr = euint256.wrap(userData);
-            // TFHE.allowThis(eUsr);
 
             isVerified = TFHE.gt(eUsr, eVal);
         } else if (_verifierType == VerifierType.SmallerThan) {
@@ -233,38 +295,20 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     function _applyMetadataFilter(Filter[][] memory filters, uint256[] memory userFilter) internal returns (ebool) {
         // By default, it is accepted
         ebool isValid = TFHE.asEbool(true);
-        // TFHE.allowThis(isValid);
 
         // In this part, we can assume the filter are valid, as we will verify them before
         for (uint256 i = 0; i < filters.length; i++) {
             // Apply the filter on the user metadata
             for (uint256 j = 0; j < filters[i].length; j++) {
                 isValid = TFHE.and(isValid, _applyFilter(filters[i][j], userFilter[i]));
-
-                // ebool isVerified;
-
-                // // VerifierType _verifierType = filters[i][j].verifier;
-
-                // if (filters[i][j].verifier == VerifierType.LargerThan) {
-                //     // TODO:
-
-                //     euint256 eVal = euint256.wrap(abi.decode(filters[i][j].value, (uint256))); // TFHE.asEuint256();
-                //     // euint256 eUsr = TFHE.asEuint256(userData); // euint256.wrap(userData); // TFHE.asEuint256();
-                //     euint256 eUsr = euint256.wrap(userFilter[i]);
-
-                //     isVerified = TFHE.gt(eUsr, eVal);
-                // } else if (filters[i][j].verifier == VerifierType.SmallerThan) {
-                //     // TODO:
-                // } else {
-                //     // FIXME:
-                // }
-
-                // isValid = TFHE.and(isValid, isVerified);
             }
         }
 
         return isValid;
     }
+
+    // Check if we can reveal NOW without compromision on privacy
+    mapping(uint256 surveyId => uint256 nbVotes) lastAnalysisVoting;
 
     // FIXME: Possibility to add another functions that will take a integer as parameter
     // allowing us to handle the iteration logic with a custom integer.
@@ -272,7 +316,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         require(queryId < _queryIds, "INVALID_QUERY_ID");
         // FIXME: Other things in mind??
 
-        uint256 voteId = queryData[queryId].voteId;
+        uint256 surveyId = queryData[queryId].surveyId;
 
         uint256 limit = 10;
         uint256 start = queryData[queryId].cursor;
@@ -283,10 +327,10 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         while (
             queryData[queryId].cursor < start + limit && // Limit the iterator
-            queryData[queryId].cursor < voteData[voteId].length // Still data to read
+            queryData[queryId].cursor < voteData[surveyId].length // Still data to read
         ) {
             // Process
-            VoteData memory data = voteData[voteId][queryData[queryId].cursor];
+            VoteData memory data = voteData[surveyId][queryData[queryId].cursor];
 
             // Apply the filter
             ebool takeIt = _applyMetadataFilter(queryData[queryId].filters, data.metadata);
@@ -308,13 +352,35 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         // In case of last iteration - Potentially reveal the value
         // FIXME: handle it
+        // Check the threshold of data and also the opposite one!
 
-        if (queryData[queryId].cursor >= voteData[voteId].length) {
+        // Add a double check here on the data.
+        // Based on the previous analyse, check if we can reveal or not
+        // Or wait new data points
+
+        if (queryData[queryId].cursor >= voteData[surveyId].length) {
+            // FIXME: allow this check only if we are in pending authorize
+            // + Double check we do not reveal it before
+
+            // Issue if we only have one more voter can block it...
+            if (
+                queryData[queryId].cursor <= lastAnalysisVoting[surveyId] + surveyParams[surveyId].minResponseThreshold
+            ) {
+                // Not possible to decypher now!
+                // Need to wait more votes
+                return;
+            }
+
+            // In the case we have a leak
+            // TODO: See how we can execute the boolean value
+
             // FIXME: double check that we do not have a potential leak
             // Else we assume that we reach a correct threshold and does not impact privacy
 
             // TFHE.allowThis(queryData[queryId].numberOfSelected);
             // TFHE.allowThis(queryData[queryId].pendingResult);
+
+            lastAnalysisVoting[surveyId] = queryData[queryId].cursor;
 
             uint256[] memory cts = new uint256[](2);
             cts[0] = Gateway.toUint256(queryData[queryId].numberOfSelected);
@@ -349,13 +415,12 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         uint256 numberOfSelected,
         uint256 pendingResult
     ) public onlyGateway {
-        // queryData[requestId].isFinished
-
         uint256 queryId = gatewayRequestId[requestId];
 
         // FIXME: have better naming please
         queryData[queryId].selectedCount = numberOfSelected;
         queryData[queryId].result = pendingResult;
+        queryData[requestId].isFinished = true;
 
         // emit event
     }

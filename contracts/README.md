@@ -229,3 +229,9 @@ If you use VSCode, you can get Solidity syntax highlighting with the
 ## License
 
 This project is licensed under MIT.
+
+
+
+#FIXME: Update readme
+        // FIXME: when building I have an issue here as it seems I cannot build it in legacy mode
+        // "--via-ir" need to provide this option.
