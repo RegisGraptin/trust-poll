@@ -27,6 +27,7 @@ struct SurveyData {
     euint256 encryptedResponses; // Encrypted survey data
     uint256 finalResult; // Final decrypted result
     bool isCompleted; // Indicate if the survey processing is completed
+    bool isInvalid; // Indicate if we had enough participants
 }
 
 struct VoteData {

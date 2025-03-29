@@ -57,7 +57,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             currentParticipants: 0,
             encryptedResponses: eResponses,
             finalResult: 0,
-            isCompleted: false
+            isCompleted: false,
+            isInvalid: false
         });
 
         emit SurveyCreated(_surveyIds, msg.sender, params.surveyType, params.surveyPrompt);
@@ -152,11 +153,23 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
             revert UnfinishedSurveyPeriod();
         }
-        // Need to have enough participants --> valid / invalid survey in that case?
 
-        // Can be called only once, add flah for valid / not
-        // In case we have decypher it add a flag to say completed
+        // Already completed
+        if (surveyData[surveyId].isCompleted) {
+            revert ResultAlreadyReveal();
+        }
 
+        // Check we have enough participants
+        if (surveyData[surveyId].currentParticipants < surveyParams[surveyId]) {
+            surveyData[surveyId].isInvalid = true;
+            surveyData[surveyId].isCompleted = true;
+
+            // TODO: Emit event / Should we keep the completed one?
+
+            return;
+        }
+
+        // Decypher the result
         uint256[] memory cts = new uint256[](1);
         cts[0] = Gateway.toUint256(surveyData[surveyId].encryptedResponses);
         uint256 _requestId = Gateway.requestDecryption(
@@ -177,23 +190,20 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     uint256 private _queryIds;
     mapping(uint256 => QueryData) public queryData;
 
+    function getQueryData(uint256 queryId) external view returns (QueryData memory) {
+        return queryData[queryId];
+    }
+
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256) {
-        if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
+        if (!surveyDaya[surveyId].isCompleted) {
             revert UnfinishedSurveyPeriod();
         }
 
-        // The survey need to be completed (end time)
-        // Completed successfully
+        if (surveyDaya[surveyId].isInvalid) {
+            revert InvalidSurvey();
+        }
 
-        // TODO: At what time could we consider starting to do analytics on the data?
-        // Can we authorize it from the beginning?
-        // Should we wait a certain number of votes
-
-        // FIXME: add constraint on the current vote.
-        // Do we want to add constraint on the current vote?
-        // Min threshold maybe?
-
-        // // FIXME: Need to verify the input filter compared to the type
+        // // TODO: Need to verify the input filter compared to the type
         // Filter[][] storage _filters = new Filter[][](params.length);
         // for (uint256 i = 0; i < params.length; i++) {
         //     _filters[i] = new Filter[](params[i].length);
@@ -212,14 +222,14 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             pendingResult: pendingResult,
             numberOfSelected: numberOfSelected,
             cursor: 0,
-            isFinished: false,
+            isCompleted: false,
             selectedCount: 0,
             result: 0
         });
 
-        _queryIds++;
+        emit QueryCreated(_queryIds, surveyId, msg.sender);
 
-        // FIXME: emit event
+        _queryIds++;
 
         return _queryIds - 1;
     }
@@ -262,59 +272,47 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         return isValid;
     }
 
-    // Check if we can reveal NOW without compromision on privacy
-    mapping(uint256 surveyId => uint256 nbVotes) lastAnalysisVoting;
+    function executeQuery(uint256 queryId, uint256 limit) external {
+        if (queryId >= _queryIds) {
+            revert InvalidQueryId();
+        }
 
-    // FIXME: Possibility to add another functions that will take a integer as parameter
-    // allowing us to handle the iteration logic with a custom integer.
-    function executeQuery(uint256 queryId) external {
-        require(queryId < _queryIds, "INVALID_QUERY_ID");
-        require(!queryData[queryId].isFinished, "ALREADY_PROCEED");
-        // FIXME: Other things in mind??
+        if (queryData[queryId].isCompleted) {
+            revert AlreadyCompletedQuery();
+        }
+
+        // TODO: Other things in mind??
 
         uint256 surveyId = queryData[queryId].surveyId;
-
-        uint256 limit = 10;
         uint256 start = queryData[queryId].cursor;
 
-        // FIXME: Simplify all the code
-        // Please: first check that you understand the allowthis --> which one do I need!
-        // To avoid potential leaks!
+        // Limit the iteration possible based on the cursor limit allow (cursor + limit)
+        // Or by the total number of data available
+        uint256 allowToRead = start + limit;
+        uint256 maxIterations = allowToRead < voteData[surveyId].length ? allowToRead : voteData[surveyId].length;
 
-        while (
-            queryData[queryId].cursor < start + limit && // Limit the iterator
-            queryData[queryId].cursor < voteData[surveyId].length // Still data to read
-        ) {
-            // Process
+        euint256 one = TFHE.asEuint256(1);
+        euint256 zero = TFHE.asEuint256(0);
+
+        while (queryData[queryId].cursor < maxIterations) {
+            // Get the vote data
             VoteData memory data = voteData[surveyId][queryData[queryId].cursor];
 
             // Apply the filter
             ebool takeIt = _applyMetadataFilter(queryData[queryId].filters, data.metadata);
-            // TFHE.allowThis(takeIt);
-            // ebool takeIt = TFHE.asEbool(true);
+            euint256 isSelected = TFHE.select(takeIt, one, zero);
+            euint256 valueSelected = TFHE.select(takeIt, data.data, zero);
 
-            euint256 one = TFHE.asEuint256(1);
-            euint256 zero = TFHE.asEuint256(0);
-
-            euint256 increment = TFHE.select(takeIt, one, zero);
-            euint256 addValue = TFHE.select(takeIt, data.data, zero);
-
-            queryData[queryId].numberOfSelected = TFHE.add(queryData[queryId].numberOfSelected, increment);
-
-            queryData[queryId].pendingResult = TFHE.add(queryData[queryId].pendingResult, addValue);
-
+            // Update the state
+            queryData[queryId].numberOfSelected = TFHE.add(queryData[queryId].numberOfSelected, isSelected);
+            queryData[queryId].pendingResult = TFHE.add(queryData[queryId].pendingResult, valueSelected);
             queryData[queryId].cursor++;
         }
 
         // In case of last iteration - Potentially reveal the value
-        // FIXME: handle it
-        // Check the threshold of data and also the opposite one!
-
-        // Add a double check here on the data.
-        // Based on the previous analyse, check if we can reveal or not
-        // Or wait new data points
-
         if (queryData[queryId].cursor >= voteData[surveyId].length) {
+            // Check the threshold of data and also the opposite one!
+
             // In the case we have a leak
             // TODO: See how we can execute the boolean value
 
@@ -323,8 +321,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
             // TFHE.allowThis(queryData[queryId].numberOfSelected);
             // TFHE.allowThis(queryData[queryId].pendingResult);
-
-            lastAnalysisVoting[surveyId] = queryData[queryId].cursor;
 
             uint256[] memory cts = new uint256[](2);
             cts[0] = Gateway.toUint256(queryData[queryId].numberOfSelected);
@@ -339,6 +335,10 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
             gatewayRequestId[_requestId] = queryId;
         }
+    }
+
+    function executeQuery(uint256 queryId) external {
+        return executeQuery(queryId, 10);
     }
 
     //////////////////////////////////////////////////////////////////
@@ -370,7 +370,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // FIXME: have better naming please
         queryData[queryId].selectedCount = numberOfSelected;
         queryData[queryId].result = pendingResult;
-        queryData[requestId].isFinished = true;
+        queryData[requestId].isCompleted = true;
 
         // emit event
     }
