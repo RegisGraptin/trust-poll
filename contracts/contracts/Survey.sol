@@ -28,14 +28,25 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     //////////////////////////////////////////////////////////////////
 
     function createSurvey(SurveyParams memory params) external returns (uint256) {
+        // Have a valid prompt
         if (bytes(params.surveyPrompt).length == 0) revert InvalidSurveyPrompt();
-        if (params.isWhitelisted && params.whitelistRootHash == bytes32(0)) {
-            revert InvalidSurveyWhitelist();
+
+        if (params.isWhitelisted) {
+            // Have a valid root hash in case of whitelisted
+            if (params.whitelistRootHash == bytes32(0)) {
+                revert InvalidSurveyWhitelist();
+            }
+
+            // Have enough participants
+            if (params.numberOfParticipants < 2) {
+                revert InvalidNumberOfParticipants();
+            }
         }
-        if (params.isWhitelisted && params.numberOfParticipants < 2) {
-            revert InvalidNumberOfParticipants();
-        }
+
+        // Have a valid end time
         if (params.surveyEndTime <= block.timestamp) revert InvalidEndTime();
+
+        // Have a valid threshold
         if (params.minResponseThreshold <= 3) revert InvalidResponseThreshold();
 
         euint256 eResponses = TFHE.asEuint256(0);
@@ -43,10 +54,10 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         surveyParams[_surveyIds] = params;
         surveyData[_surveyIds] = SurveyData({
-            participantCount: 0,
+            currentParticipants: 0,
             encryptedResponses: eResponses,
-            lastDecryptedCount: 0,
-            decryptedResponses: 0 // FIXME: add indicator for decrypted or not
+            finalResult: 0,
+            isCompleted: false
         });
 
         emit SurveyCreated(_surveyIds, msg.sender, params.surveyType, params.surveyPrompt);
@@ -68,9 +79,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         require(surveyId < _surveyIds, "invalid");
         require(!hasVoted[surveyId][msg.sender], "already_voted");
         require(surveyParams[surveyId].metadataTypes.length == metadata.length, "Invalid length");
-
-        // TODO: Defined in readme explicitaly all the parameter
-        // params.surveyEndTime <= block.timestamp
+        require(block.timestamp <= surveyParams[surveyId].surveyEndTime, "finished survey");
 
         // In case of whitelisted survey, check the user access
         if (surveyParams[surveyId].isWhitelisted) {
@@ -102,7 +111,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         TFHE.allowThis(eVote);
 
         surveyData[surveyId].encryptedResponses = TFHE.add(surveyData[surveyId].encryptedResponses, eVote);
-        surveyData[surveyId].participantCount++;
+        surveyData[surveyId].currentParticipants++;
         TFHE.allowThis(surveyData[surveyId].encryptedResponses);
 
         // Save vote info
@@ -139,35 +148,14 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     mapping(uint256 requestId => uint256) countRequested;
 
     function revealResults(uint256 surveyId) external {
-        if (surveyParams[surveyId].authorizePendingReveal) {
-            // Be sure that the next time we ask to reveal, we have enough vote
-            if (
-                (surveyData[surveyId].lastDecryptedCount + surveyParams[surveyId].minResponseThreshold) >
-                surveyData[surveyId].participantCount
-            ) {
-                revert ThresholdNeeded();
-            }
-
-            // In a whitelisted scenario, we want to avoid the scenario where we do not have enough
-            // participants which would leak the vote value.
-            if (
-                surveyParams[surveyId].isWhitelisted &&
-                surveyData[surveyId].participantCount >
-                (surveyParams[surveyId].numberOfParticipants - surveyParams[surveyId].minResponseThreshold)
-            ) {
-                // An exception if we have all the participants that have voted
-                if (
-                    surveyData[surveyId].participantCount !=
-                    (surveyParams[surveyId].numberOfParticipants - surveyParams[surveyId].minResponseThreshold)
-                ) {
-                    revert InvalidRevealAction();
-                }
-            }
-        } else {
-            if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
-                revert UnfinishedSurveyPeriod();
-            }
+        // Need the survey to be finished
+        if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
+            revert UnfinishedSurveyPeriod();
         }
+        // Need to have enough participants --> valid / invalid survey in that case?
+
+        // Can be called only once, add flah for valid / not
+        // In case we have decypher it add a flag to say completed
 
         uint256[] memory cts = new uint256[](1);
         cts[0] = Gateway.toUint256(surveyData[surveyId].encryptedResponses);
@@ -190,6 +178,13 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     mapping(uint256 => QueryData) public queryData;
 
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256) {
+        if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
+            revert UnfinishedSurveyPeriod();
+        }
+
+        // The survey need to be completed (end time)
+        // Completed successfully
+
         // TODO: At what time could we consider starting to do analytics on the data?
         // Can we authorize it from the beginning?
         // Should we wait a certain number of votes
@@ -208,49 +203,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         //     }
         // }
 
-        // Check if the survey authorize "pending analysis".
-        // TODO: Do we consider when all the people has voted to be finished?
-        if (surveyParams[surveyId].authorizePendingAnalyze && block.timestamp < surveyParams[surveyId].surveyEndTime) {
-            revert UnauthorizePendingQuery();
-        }
-
         euint256 pendingResult = TFHE.asEuint256(0);
         euint256 numberOfSelected = TFHE.asEuint256(0);
 
-        // Define the limit
-
-        uint256 limit;
-
-        if (!surveyParams[surveyId].authorizePendingAnalyze) {
-            if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
-                revert InvalidRevealAction(); // TODO: Change naming
-            }
-            // Safely choose the whole participants
-            limit = surveyData[surveyId].participantCount;
-        } else {
-            // Need to authorize only based on a threshold
-            // FIXME: need to link with traditional reveal
-            // as it can leak some data
-        }
-
-        // When survey is finished
-
-        // When whitelisted, we expect a total number of participants
-
-        // Add a limit
-        // We do not have a dynamic query anymore. From the start we are defining the limit
-        // of the data we can analyse.
-        // If whitelist -
-        //      - If complete take it
-        //      -
-
-        // 10 // 3 => 3 / 1
-        // 7 authorize
-        // ((total - theshold) / threshold) * threshold
-        // 7 / 3 = 2 => * 3 => 6
-        // 6 / 3 = 2 => * 3 => 6
-
-        // FIXME: here issue ----
         queryData[_queryIds] = QueryData({
             surveyId: surveyId,
             filters: params,
@@ -314,6 +269,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     // allowing us to handle the iteration logic with a custom integer.
     function executeQuery(uint256 queryId) external {
         require(queryId < _queryIds, "INVALID_QUERY_ID");
+        require(!queryData[queryId].isFinished, "ALREADY_PROCEED");
         // FIXME: Other things in mind??
 
         uint256 surveyId = queryData[queryId].surveyId;
@@ -359,18 +315,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // Or wait new data points
 
         if (queryData[queryId].cursor >= voteData[surveyId].length) {
-            // FIXME: allow this check only if we are in pending authorize
-            // + Double check we do not reveal it before
-
-            // Issue if we only have one more voter can block it...
-            if (
-                queryData[queryId].cursor <= lastAnalysisVoting[surveyId] + surveyParams[surveyId].minResponseThreshold
-            ) {
-                // Not possible to decypher now!
-                // Need to wait more votes
-                return;
-            }
-
             // In the case we have a leak
             // TODO: See how we can execute the boolean value
 
@@ -404,9 +348,15 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     /// Gateway Callback - Decrypt the vote result
     function gatewayDecryptVoteResult(uint256 requestId, uint256 result) public onlyGateway {
         uint256 surveyId = gatewayRequestId[requestId];
-        surveyData[surveyId].decryptedResponses = result;
+        surveyData[surveyId].finalResult = result;
+        surveyData[surveyId].isCompleted = true;
 
-        // emit GatewayTotalValueRequested(_gatewayProcess[requestId], result);
+        emit SurveyCompleted(
+            surveyId,
+            surveyParams[surveyId].surveyType,
+            surveyData[surveyId].currentParticipants,
+            result
+        );
     }
 
     ///

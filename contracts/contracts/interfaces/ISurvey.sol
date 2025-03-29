@@ -11,35 +11,22 @@ enum SurveyType {
     BENCHMARK
 }
 
-struct SurveyData {
-    uint256 participantCount; // Number of participants
-    euint256 encryptedResponses; // Encrypted survey data
-    uint256 lastDecryptedCount;
-    uint256 decryptedResponses;
-}
-
-// FIXME: should merge (surveyParams & SurveyData)
-// Or have it more explicitly defined
-
 struct SurveyParams {
     string surveyPrompt;
     SurveyType surveyType;
-    /// @notice Indicates if the survey is restricted to a whitelisted users
-    bool isWhitelisted;
-    /// @notice Merkle root hash for allowlist verification (if restricted)
-    bytes32 whitelistRootHash;
-    /// @notice Number of participant
-    uint256 numberOfParticipants;
-    /// @notice UNIX timestamp when survey automatically closes
-    uint256 surveyEndTime;
-    /// @notice Minimum number of responses required before analysis/reveal
-    uint256 minResponseThreshold;
-    /// @notice List of metadata requirements from participants
-    MetadataType[] metadataTypes;
-    /// @notice Authorize to reveal running survey result
-    bool authorizePendingReveal;
-    /// @notice Authorize to do analysis when the survey is still running
-    bool authorizePendingAnalyze;
+    bool isWhitelisted; // Indicates if the survey is restricted to a whitelisted users
+    bytes32 whitelistRootHash; // Merkle root hash for allowlist verification (if restricted)
+    uint256 numberOfParticipants; // Number of participant
+    uint256 surveyEndTime; // UNIX timestamp when survey closes
+    uint256 minResponseThreshold; // Minimum number of responses required before analysis/reveal
+    MetadataType[] metadataTypes; // List of metadata requirements from participants
+}
+
+struct SurveyData {
+    uint256 currentParticipants; // Number of participants
+    euint256 encryptedResponses; // Encrypted survey data
+    uint256 finalResult; // Final decrypted result
+    bool isCompleted; // Indicate if the survey processing is completed
 }
 
 struct VoteData {
@@ -65,6 +52,8 @@ interface ISurvey {
     event SurveyCreated(uint256 indexed surveyId, address organizer, SurveyType surveyType, string surveyPrompt);
 
     event EntrySubmitted(uint256 indexed surveyId, address user);
+
+    event SurveyCompleted(uint256 indexed surveyId, SurveyType surveyType, uint256 numberOfVotes, uint256 response);
 
     /// @notice Create a new survey.
     /// @param params Parameter of the Survey.
