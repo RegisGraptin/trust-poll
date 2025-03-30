@@ -69,6 +69,71 @@ const invalidSurveyParamsTestCases = [
   // Add more test cases as needed
 ];
 
+const analyseScenarioTestCases = [
+  {
+    name: "People greater than 50 years old",
+    params: {
+      minResponseThreshold: 4,
+      pollingVotes: [true, true, false, true, false, true, true, true, true],
+      surveyMetadataTypes: [MetadataType.UINT256, MetadataType.BOOLEAN],
+      userMetadata: [
+        // [Age, Gender]
+        [24, true],
+        [27, false],
+        [28, true],
+        [47, false],
+        [48, false],
+        [53, true],
+        [54, false],
+        [55, true],
+        [56, true],
+      ],
+      filters: [
+        // Age greater than 50
+        [
+          {
+            verifier: 0, // LargerThan
+            value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [50]),
+          },
+        ],
+      ],
+      expectToBeValid: true,
+      finalResultCount: 4,
+      finalResult: 4,
+    },
+  },
+  {
+    name: "Invalid analyse - Not enough data points",
+    params: {
+      minResponseThreshold: 5,
+      pollingVotes: [true, true, false, true, false, true, true, true, true],
+      surveyMetadataTypes: [MetadataType.UINT256, MetadataType.BOOLEAN],
+      userMetadata: [
+        // [Age, Gender]
+        [24, true],
+        [27, false],
+        [28, true],
+        [47, false],
+        [48, false],
+        [53, true],
+        [54, false],
+        [55, true],
+        [56, true],
+      ],
+      filters: [
+        // Age greater than 55
+        [
+          {
+            verifier: 0, // LargerThan
+            value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [55]),
+          },
+        ],
+      ],
+      expectToBeValid: false,
+    },
+  },
+];
+
 describe("Survey", function () {
   // We are using snapshot allowing us to reset the environment from executing test
   let snapshotId: string;
@@ -203,69 +268,55 @@ describe("Survey", function () {
     expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
   });
 
-  it("should handle polling survey with metadata and analyse it", async function () {
-    const voterNames = ACCOUNT_NAMES;
-    const pollingVotes = [true, true, false, true, false, true, true, true, true];
+  analyseScenarioTestCases.forEach(({ name, params }) => {
+    it(`should handle analyse on: ${name}`, async function () {
+      const voterNames = ACCOUNT_NAMES;
+      const pollingVotes = params.pollingVotes;
+      const surveyMetadataTypes = params.surveyMetadataTypes;
+      const userMetadata = params.userMetadata;
 
-    // [age, gender]
-    const surveyMetadataTypes = [MetadataType.UINT256, MetadataType.BOOLEAN];
-    const userMetadata = [
-      [24, true],
-      [27, false],
-      [28, true],
-      [47, false],
-      [48, false],
-      [53, true],
-      [54, false],
-      [55, true],
-      [56, true],
-    ];
+      const surveyParam = {
+        ...validSurveyParam,
+        minResponseThreshold: params.minResponseThreshold,
+        metadataTypes: surveyMetadataTypes,
+      };
 
-    const surveyParam = {
-      ...validSurveyParam,
-      metadataTypes: surveyMetadataTypes,
-    };
+      const transaction = await this.survey.createSurvey(surveyParam);
+      await transaction.wait();
 
-    const transaction = await this.survey.createSurvey(surveyParam);
-    await transaction.wait();
+      /// Voting part
+      for (let index = 0; index < pollingVotes.length; index++) {
+        await this.submitPollingEntry(
+          this.signers[voterNames[index]],
+          0,
+          pollingVotes[index],
+          surveyMetadataTypes,
+          userMetadata[index],
+        );
+      }
 
-    /// Voting part
-    for (let index = 0; index < pollingVotes.length; index++) {
-      await this.submitPollingEntry(
-        this.signers[voterNames[index]],
-        0,
-        pollingVotes[index],
-        surveyMetadataTypes,
-        userMetadata[index],
-      );
-    }
+      const surveyDataAfterVoting = await this.revealSurveyResult(0);
+      expect(surveyDataAfterVoting.isCompleted).to.be.true;
+      expect(surveyDataAfterVoting.isInvalid).to.be.false;
+      expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
+      expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
 
-    const surveyDataAfterVoting = await this.revealSurveyResult(0);
-    expect(surveyDataAfterVoting.isCompleted).to.be.true;
-    expect(surveyDataAfterVoting.isInvalid).to.be.false;
-    expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
-    expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
+      // TODO: automate in case more users?
+      // Create and execute the query
+      await this.survey.createQuery(0, params.filters);
+      await this.survey["executeQuery(uint256)"](0);
+      await awaitAllDecryptionResults(); // Wait for the gateway
 
-    /// Analyse part
-    // Analysts could view aggregated results, for example, the breakdown of votes from men over 45.
-    const filters = [
-      [
-        {
-          verifier: 0, // LargerThan
-          value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [50]),
-        },
-      ],
-    ];
-    // Create and execute the query
-    await this.survey.createQuery(0, filters);
-    await this.survey["executeQuery(uint256)"](0);
-    await awaitAllDecryptionResults(); // Wait for the gateway
-
-    // Read the result
-    const queryData = await this.survey.queryData(0);
-    expect(queryData.isCompleted).to.be.true;
-    expect(queryData.isInvalid).to.be.false;
-    expect(queryData.finalSelectedCount).to.be.equals(4);
-    expect(queryData.finalResult).to.be.equals(4);
+      // Read the result
+      const queryData = await this.survey.queryData(0);
+      expect(queryData.isCompleted).to.be.true;
+      if (params.expectToBeValid) {
+        expect(queryData.isInvalid).to.be.false;
+        expect(queryData.finalSelectedCount).to.be.equals(4);
+        expect(queryData.finalResult).to.be.equals(4);
+      } else {
+        expect(queryData.isInvalid).to.be.true;
+      }
+    });
   });
 });
