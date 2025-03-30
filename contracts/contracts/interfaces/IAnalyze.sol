@@ -4,20 +4,11 @@ pragma solidity ^0.8.24;
 import "fhevm/lib/TFHE.sol";
 import "fhevm/gateway/GatewayCaller.sol";
 
-enum VerifierType {
-    LargerThan,
-    SmallerThan,
-    EqualTo
-}
+import { Filter } from "./IFilters.sol";
 
 // FIXME: Should we apply a mapping on the type and the acceptable filter?
 
 // FIXME: we need to have an encrypted value which bring some qustion
-
-struct Filter {
-    VerifierType verifier;
-    bytes value;
-}
 
 // TODO: Do we want the query created by someone public?
 // We could push the encryption boundaries further, by encrypting the query too

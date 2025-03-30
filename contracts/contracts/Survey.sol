@@ -9,19 +9,23 @@ import { SepoliaZamaGatewayConfig } from "fhevm/config/ZamaGatewayConfig.sol";
 
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { MetadataType } from "./interfaces/IMetadata.sol";
+import { MetadataType, VerifierType, Filter } from "./interfaces/IFilters.sol";
 
 import { ISurvey, SurveyParams, SurveyData, VoteData } from "./interfaces/ISurvey.sol";
-import { IAnalyze, QueryData, Filter, VerifierType } from "./interfaces/IAnalyze.sol";
+import { IAnalyze, QueryData } from "./interfaces/IAnalyze.sol";
 
 contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
     uint256 private _surveyIds;
-
     mapping(uint256 => SurveyParams) public surveyParams;
     mapping(uint256 => SurveyData) public surveyData;
 
     mapping(uint256 => VoteData[]) voteData;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
+
+    uint256 private _queryIds;
+    mapping(uint256 => QueryData) public queryData;
+
+    mapping(uint256 requestId => uint256 surveyId) gatewayRequestId;
 
     //////////////////////////////////////////////////////////////////
     /// Survey management
@@ -44,7 +48,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         }
 
         // Have a valid end time
-        if (params.surveyEndTime <= block.timestamp) revert InvalidEndTime();
+        if (params.surveyEndTime < block.timestamp) revert InvalidEndTime();
 
         // Have a valid threshold
         if (params.minResponseThreshold <= 3) revert InvalidResponseThreshold();
@@ -76,11 +80,21 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         bytes calldata inputProof,
         bytes32[] memory whitelistProof
     ) internal {
-        // require(block.timestamp == 0 || block.timestamp > endVoteTime, "VOTE_PENDING");
-        require(surveyId < _surveyIds, "invalid");
-        require(!hasVoted[surveyId][msg.sender], "already_voted");
-        require(surveyParams[surveyId].metadataTypes.length == metadata.length, "Invalid length");
-        require(block.timestamp <= surveyParams[surveyId].surveyEndTime, "finished survey");
+        if (surveyId >= _surveyIds) {
+            revert InvalidSurveyId();
+        }
+
+        if (block.timestamp >= surveyParams[surveyId].surveyEndTime) {
+            revert FinishedSurvey();
+        }
+
+        if (hasVoted[surveyId][msg.sender]) {
+            revert UserAlreadyVoted();
+        }
+
+        if (surveyParams[surveyId].metadataTypes.length != metadata.length) {
+            revert InvalidUserMetadata();
+        }
 
         // In case of whitelisted survey, check the user access
         if (surveyParams[surveyId].isWhitelisted) {
@@ -92,6 +106,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         }
 
         // Check metadata type
+        // TODO: Internal function as we need to check if it is valid?
         uint256[] memory checkedMetadatValue = new uint256[](surveyParams[surveyId].metadataTypes.length);
         for (uint256 i = 0; i < surveyParams[surveyId].metadataTypes.length; i++) {
             MetadataType _type = surveyParams[surveyId].metadataTypes[i];
@@ -106,6 +121,14 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
                 TFHE.allowThis(val);
             }
         }
+
+        // Check the value of the metadata
+        // FIXME: Not sure we can reveal it and use it. This means, we potentially needs to have another
+        // verification layer. What can be done, is to add a boolean isValid, that will valiate it
+        // in another step.
+        ebool validEntry = _applyMetadataFilter(surveyParams[surveyId].constraints, checkedMetadatValue);
+        // FIXME: check with zama how to filter on it
+        // TODO: Possibility to check the medata value by adding some constraint on it
 
         // Add a new vote
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
@@ -145,12 +168,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         _submitEntry(surveyId, eInputVote, metadata, inputProof, whitelistProof);
     }
 
-    mapping(uint256 requestId => uint256 surveyId) gatewayRequestId;
-    mapping(uint256 requestId => uint256) countRequested;
-
     function revealResults(uint256 surveyId) external {
         // Need the survey to be finished
-        if (block.timestamp <= surveyParams[surveyId].surveyEndTime) {
+        if (block.timestamp < surveyParams[surveyId].surveyEndTime) {
             revert UnfinishedSurveyPeriod();
         }
 
@@ -186,9 +206,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     //////////////////////////////////////////////////////////////////
     /// Analyse the data
     //////////////////////////////////////////////////////////////////
-
-    uint256 private _queryIds;
-    mapping(uint256 => QueryData) public queryData;
 
     function getQueryData(uint256 queryId) external view returns (QueryData memory) {
         return queryData[queryId];
@@ -234,6 +251,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         return _queryIds - 1;
     }
+
+    // TODO: Adjust where to put it the function as used on the two parts
 
     function _applyFilter(Filter memory filter, uint256 userData) internal returns (ebool) {
         ebool isVerified;
@@ -316,6 +335,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // In case of last iteration - Potentially reveal the value
         if (queryData[queryId].cursor >= voteData[surveyId].length) {
             // Check the threshold of data and also the opposite one!
+
+            // TFHE.select()
 
             // In the case we have a leak
             // TODO: See how we can execute the boolean value

@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "fhevm/lib/TFHE.sol";
 import "fhevm/gateway/GatewayCaller.sol";
 
-import { MetadataType } from "./IMetadata.sol";
+import { MetadataType, Filter } from "./IFilters.sol";
 
 enum SurveyType {
     POLLING,
@@ -20,6 +20,7 @@ struct SurveyParams {
     uint256 surveyEndTime; // UNIX timestamp when survey closes
     uint256 minResponseThreshold; // Minimum number of responses required before analysis/reveal
     MetadataType[] metadataTypes; // List of metadata requirements from participants
+    Filter[][] constraints; // List of metadata contraints to defined a valid metadata
 }
 
 struct SurveyData {
@@ -42,6 +43,11 @@ interface ISurvey {
     error InvalidResponseThreshold();
     error InvalidMetadata();
     error ResultAlreadyReveal();
+
+    error InvalidSurveyId();
+    error UserAlreadyVoted();
+    error InvalidUserMetadata();
+    error FinishedSurvey();
 
     error InvalidNumberOfParticipants(); // TODO : Adjust naming
 
