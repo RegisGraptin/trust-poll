@@ -17,6 +17,13 @@ declare module "mocha" {
     contractAddress: string;
     survey: Survey;
     fhevm: FhevmInstance;
+    submitPollingEntry: (
+      signer: HardhatEthersSigner,
+      surveyId: number,
+      entry: boolean,
+      surveyMetadataType: MetadataType[],
+      userMetadata: any[],
+    ) => Promise<void>;
     revealSurveyResult: (surveyId: number) => Promise<SurveyDataStruct>;
   }
 }
@@ -149,16 +156,13 @@ describe("Survey", function () {
     this.survey = contract;
     this.fhevm = await createInstance();
 
-    // Helper functions
-    // TODO: See how to defined typing
-
     /// Submit entry for polling survey
     this.submitPollingEntry = async (
       signer: HardhatEthersSigner,
       surveyId: number,
       entry: boolean,
-      surveyMetadataType: [] = [], // Optional - Depends on the survey
-      userMetadata: [] = [],
+      surveyMetadataType: MetadataType[] = [], // Optional - Depends on the survey
+      userMetadata: any[] = [],
     ) => {
       const input = this.fhevm.createEncryptedInput(this.contractAddress, signer.address);
       let inputs = input.add256(Number(entry));
