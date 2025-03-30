@@ -160,7 +160,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         }
 
         // Check we have enough participants
-        if (surveyData[surveyId].currentParticipants < surveyParams[surveyId]) {
+        if (surveyData[surveyId].currentParticipants < surveyParams[surveyId].minResponseThreshold) {
             surveyData[surveyId].isInvalid = true;
             surveyData[surveyId].isCompleted = true;
 
@@ -195,11 +195,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     }
 
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256) {
-        if (!surveyDaya[surveyId].isCompleted) {
+        if (!surveyData[surveyId].isCompleted) {
             revert UnfinishedSurveyPeriod();
         }
 
-        if (surveyDaya[surveyId].isInvalid) {
+        if (surveyData[surveyId].isInvalid) {
             revert InvalidSurvey();
         }
 
@@ -213,18 +213,19 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         //     }
         // }
 
-        euint256 pendingResult = TFHE.asEuint256(0);
-        euint256 numberOfSelected = TFHE.asEuint256(0);
+        euint256 pendingEncryptedResult = TFHE.asEuint256(0);
+        euint256 pendingSelectedNumber = TFHE.asEuint256(0);
 
         queryData[_queryIds] = QueryData({
             surveyId: surveyId,
             filters: params,
-            pendingResult: pendingResult,
-            numberOfSelected: numberOfSelected,
+            pendingEncryptedResult: pendingEncryptedResult,
+            pendingSelectedNumber: pendingSelectedNumber,
             cursor: 0,
             isCompleted: false,
-            selectedCount: 0,
-            result: 0
+            isInvalid: false,
+            finalSelectedCount: 0,
+            finalResult: 0
         });
 
         emit QueryCreated(_queryIds, surveyId, msg.sender);
@@ -272,7 +273,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         return isValid;
     }
 
-    function executeQuery(uint256 queryId, uint256 limit) external {
+    function executeQuery(uint256 queryId, uint256 limit) public {
         if (queryId >= _queryIds) {
             revert InvalidQueryId();
         }
@@ -304,8 +305,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             euint256 valueSelected = TFHE.select(takeIt, data.data, zero);
 
             // Update the state
-            queryData[queryId].numberOfSelected = TFHE.add(queryData[queryId].numberOfSelected, isSelected);
-            queryData[queryId].pendingResult = TFHE.add(queryData[queryId].pendingResult, valueSelected);
+            queryData[queryId].pendingSelectedNumber = TFHE.add(queryData[queryId].pendingSelectedNumber, isSelected);
+            queryData[queryId].pendingEncryptedResult = TFHE.add(
+                queryData[queryId].pendingEncryptedResult,
+                valueSelected
+            );
             queryData[queryId].cursor++;
         }
 
@@ -319,12 +323,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             // FIXME: double check that we do not have a potential leak
             // Else we assume that we reach a correct threshold and does not impact privacy
 
-            // TFHE.allowThis(queryData[queryId].numberOfSelected);
-            // TFHE.allowThis(queryData[queryId].pendingResult);
-
             uint256[] memory cts = new uint256[](2);
-            cts[0] = Gateway.toUint256(queryData[queryId].numberOfSelected);
-            cts[1] = Gateway.toUint256(queryData[queryId].pendingResult);
+            cts[0] = Gateway.toUint256(queryData[queryId].pendingSelectedNumber);
+            cts[1] = Gateway.toUint256(queryData[queryId].pendingEncryptedResult);
             uint256 _requestId = Gateway.requestDecryption(
                 cts,
                 this.gatewayDecryptAnalyse.selector, // FIXME: naming
@@ -362,14 +363,14 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     ///
     function gatewayDecryptAnalyse(
         uint256 requestId,
-        uint256 numberOfSelected,
-        uint256 pendingResult
+        uint256 _finalSelectedCount,
+        uint256 _finalResult
     ) public onlyGateway {
         uint256 queryId = gatewayRequestId[requestId];
 
         // FIXME: have better naming please
-        queryData[queryId].selectedCount = numberOfSelected;
-        queryData[queryId].result = pendingResult;
+        queryData[queryId].finalSelectedCount = _finalSelectedCount;
+        queryData[queryId].finalResult = _finalResult;
         queryData[requestId].isCompleted = true;
 
         // emit event

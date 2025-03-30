@@ -41,6 +41,7 @@ interface ISurvey {
     error InvalidEndTime();
     error InvalidResponseThreshold();
     error InvalidMetadata();
+    error ResultAlreadyReveal();
 
     error InvalidNumberOfParticipants(); // TODO : Adjust naming
 
