@@ -157,6 +157,16 @@ Notice that the opposit is also true. The negative version is also not valid, as
 
 > - "Pre-computation of statistics: Aggregate data in batches to minimize expensive on-chain TFHE operations."
 
+### Validate a query
+
+Once the query isfully executed over all the data, we need to verify that the data does not leak any information. This verification step is done by taking into account the number of selected votes. If we do not reached the expected threshold or if
+
+> Say that 0 -> threshold or max - threshold -> max
+
+To handle this logic, we need to have a double verification. First we need the gateway to send a smart
+
+=> Participant number equals 0
+
 ## UI Aspect
 
 On the first section, we need to see the user vote, to let them know how they can do it, while providing metadata.

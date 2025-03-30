@@ -1,5 +1,7 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
+import { HexString } from "@openzeppelin/merkle-tree/dist/bytes";
 import { expect } from "chai";
 import { FhevmInstance } from "fhevmjs/node";
 import { ethers, network } from "hardhat";
@@ -9,21 +11,30 @@ import { ISurvey, SurveyDataStruct, SurveyParamsStruct } from "../../types/contr
 import { awaitAllDecryptionResults } from "../asyncDecrypt";
 import { ACCOUNT_NAMES } from "../constants";
 import { createInstance } from "../instance";
-import { getSigners, initSigners } from "../signers";
+import { Signers, getSigners, initSigners } from "../signers";
 import { deploySurveyFixture } from "./Survey.fixture";
 
 declare module "mocha" {
   export interface Context {
     contractAddress: string;
     survey: Survey;
+    signers: Signers;
     fhevm: FhevmInstance;
-    submitPollingEntry: (
-      signer: HardhatEthersSigner,
-      surveyId: number,
-      entry: boolean,
-      surveyMetadataType: MetadataType[],
-      userMetadata: any[],
-    ) => Promise<void>;
+    submitPollingEntry: ({
+      signer,
+      surveyId,
+      entry,
+      surveyMetadataType,
+      userMetadata,
+      tree,
+    }: {
+      signer: HardhatEthersSigner;
+      surveyId: number;
+      entry: boolean;
+      surveyMetadataType?: MetadataType[];
+      userMetadata?: any[];
+      tree?: StandardMerkleTree<string[]>;
+    }) => Promise<void>;
     revealSurveyResult: (surveyId: number) => Promise<SurveyDataStruct>;
   }
 }
@@ -157,13 +168,7 @@ describe("Survey", function () {
     this.fhevm = await createInstance();
 
     /// Submit entry for polling survey
-    this.submitPollingEntry = async (
-      signer: HardhatEthersSigner,
-      surveyId: number,
-      entry: boolean,
-      surveyMetadataType: MetadataType[] = [], // Optional - Depends on the survey
-      userMetadata: any[] = [],
-    ) => {
+    this.submitPollingEntry = async ({ signer, surveyId, entry, surveyMetadataType = [], userMetadata = [], tree }) => {
       const input = this.fhevm.createEncryptedInput(this.contractAddress, signer.address);
       let inputs = input.add256(Number(entry));
 
@@ -195,12 +200,35 @@ describe("Survey", function () {
         userEncryptedMetadata.push(encryptedInputs.handles[index + 1]);
       }
 
-      // Create a new entry
-      // ["submitEntry(uint256,bytes32,uint256[],bytes)"]
-      const transaction = await this.survey
-        .connect(signer)
-        .submitEntry(surveyId, encryptedInputs.handles[0], userEncryptedMetadata, encryptedInputs.inputProof);
-      await transaction.wait();
+      // In the case of a whitelist generate a proof for the user
+      if (tree) {
+        let whitelistedProof: HexString[] = [];
+        for (const [i, v] of tree.entries()) {
+          if (v[0] === signer.address) {
+            whitelistedProof = tree.getProof(i);
+            break;
+          }
+        }
+
+        // Create a new entry
+        const transaction = await this.survey
+          .connect(signer)
+          .submitWhitelistedEntry(
+            surveyId,
+            encryptedInputs.handles[0],
+            userEncryptedMetadata,
+            encryptedInputs.inputProof,
+            whitelistedProof,
+          );
+        await transaction.wait();
+      } else {
+        // Create a new entry
+        // ["submitEntry(uint256,bytes32,uint256[],bytes)"]
+        const transaction = await this.survey
+          .connect(signer)
+          .submitEntry(surveyId, encryptedInputs.handles[0], userEncryptedMetadata, encryptedInputs.inputProof);
+        await transaction.wait();
+      }
     };
 
     this.revealSurveyResult = async (surveyId: number): Promise<SurveyDataStruct> => {
@@ -241,7 +269,7 @@ describe("Survey", function () {
 
     // Check that the user can vote
     expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.false;
-    await this.submitPollingEntry(this.signers.alice, 0, true);
+    await this.submitPollingEntry({ signer: this.signers.alice, surveyId: 0, entry: true });
     expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.true;
   });
 
@@ -250,6 +278,47 @@ describe("Survey", function () {
       const invalidParams = { ...validSurveyParam, ...params };
       await expect(this.survey.createSurvey(invalidParams)).to.be.revertedWithCustomError(this.survey, error);
     });
+  });
+
+  it("should create a new whitelisted survey", async function () {
+    const whitelistedAddresses = [
+      [this.signers.alice.address],
+      [this.signers.bob.address],
+      [this.signers.carol.address],
+      [this.signers.dave.address],
+    ];
+    const tree = StandardMerkleTree.of(whitelistedAddresses, ["address"]);
+
+    const surveyParams = {
+      ...validSurveyParam,
+      isWhitelisted: true,
+      whitelistRootHash: tree.root,
+      numberOfParticipants: whitelistedAddresses.length,
+    };
+    const transaction = await this.survey.createSurvey(surveyParams);
+    await transaction.wait();
+
+    // Check the survey information at the index 0
+    const surveyData = await this.survey.surveyParams(0);
+
+    expect(surveyData.surveyPrompt).to.be.equals("Are you in favor of privacy?");
+    expect(surveyData.isWhitelisted).to.be.true;
+    expect(surveyData.surveyEndTime).to.be.equals(SURVEY_END_TIME);
+    expect(surveyData.minResponseThreshold).to.be.equals(4);
+
+    // Check that the user can vote
+    expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.false;
+    await this.submitPollingEntry({ signer: this.signers.alice, surveyId: 0, entry: false, tree: tree });
+    expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.true;
+
+    // Try to vote with and invalid user
+    const nonAuthorizeSigner = this.signers.eve;
+    const input = this.fhevm.createEncryptedInput(this.contractAddress, nonAuthorizeSigner.address);
+    const inputs = await input.add256(Number(0)).encrypt();
+
+    expect(this.survey.connect(this.signers.eve).submitEntry(0, inputs.handles[0], [], inputs.inputProof)).to.be
+      .reverted;
+    expect(await this.survey.hasVoted(0, nonAuthorizeSigner.address)).to.be.false;
   });
 
   it("should reveal polling survey with no metadata", async function () {
@@ -261,7 +330,11 @@ describe("Survey", function () {
 
     // Do the voting
     for (let index = 0; index < pollingVotes.length; index++) {
-      await this.submitPollingEntry(this.signers[voterNames[index]], 0, pollingVotes[index]);
+      await this.submitPollingEntry({
+        signer: this.signers[voterNames[index]],
+        surveyId: 0,
+        entry: pollingVotes[index],
+      });
     }
 
     // Reveal the survey and check the expected result
@@ -290,13 +363,13 @@ describe("Survey", function () {
 
       /// Voting part
       for (let index = 0; index < pollingVotes.length; index++) {
-        await this.submitPollingEntry(
-          this.signers[voterNames[index]],
-          0,
-          pollingVotes[index],
-          surveyMetadataTypes,
-          userMetadata[index],
-        );
+        await this.submitPollingEntry({
+          signer: this.signers[voterNames[index]],
+          surveyId: 0,
+          entry: pollingVotes[index],
+          surveyMetadataType: surveyMetadataTypes,
+          userMetadata: userMetadata[index],
+        });
       }
 
       const surveyDataAfterVoting = await this.revealSurveyResult(0);

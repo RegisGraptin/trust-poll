@@ -202,7 +202,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         cts[0] = Gateway.toUint256(_surveyData[surveyId].encryptedResponses);
         uint256 _requestId = Gateway.requestDecryption(
             cts,
-            this.gatewayDecryptVoteResult.selector,
+            this.gatewayDecryptSurveyResult.selector,
             0,
             block.timestamp + 100,
             false
@@ -344,20 +344,33 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         if (queryData[queryId].cursor >= voteData[surveyId].length) {
             // Check the threshold of data and also the opposite one!
 
-            // TFHE.select()
+            euint256 thresholdDown = TFHE.asEuint256(_surveyParams[surveyId].minResponseThreshold);
+            euint256 thresholdUp = TFHE.asEuint256(
+                _surveyData[surveyId].currentParticipants - _surveyParams[surveyId].minResponseThreshold
+            );
 
-            // In the case we have a leak
-            // TODO: See how we can execute the boolean value
+            ebool reachedThreshold = TFHE.and(
+                TFHE.gt(queryData[queryId].pendingSelectedNumber, thresholdDown),
+                TFHE.lt(queryData[queryId].pendingSelectedNumber, thresholdUp)
+            );
 
-            // FIXME: double check that we do not have a potential leak
-            // Else we assume that we reach a correct threshold and does not impact privacy
+            euint256 sPendingSelectedNumber = TFHE.select(
+                reachedThreshold,
+                queryData[queryId].pendingSelectedNumber,
+                zero
+            );
+            euint256 sPendingEncryptedResult = TFHE.select(
+                reachedThreshold,
+                queryData[queryId].pendingEncryptedResult,
+                zero
+            );
 
             uint256[] memory cts = new uint256[](2);
-            cts[0] = Gateway.toUint256(queryData[queryId].pendingSelectedNumber);
-            cts[1] = Gateway.toUint256(queryData[queryId].pendingEncryptedResult);
+            cts[0] = Gateway.toUint256(sPendingSelectedNumber);
+            cts[1] = Gateway.toUint256(sPendingEncryptedResult);
             uint256 _requestId = Gateway.requestDecryption(
                 cts,
-                this.gatewayDecryptAnalyse.selector, // FIXME: naming
+                this.gatewayDecryptQueryResult.selector,
                 0,
                 block.timestamp + 100,
                 false
@@ -376,7 +389,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     //////////////////////////////////////////////////////////////////
 
     /// Gateway Callback - Decrypt the vote result
-    function gatewayDecryptVoteResult(uint256 requestId, uint256 result) public onlyGateway {
+    function gatewayDecryptSurveyResult(uint256 requestId, uint256 result) public onlyGateway {
         uint256 surveyId = gatewayRequestId[requestId];
         _surveyData[surveyId].finalResult = result;
         _surveyData[surveyId].isCompleted = true;
@@ -389,19 +402,27 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         );
     }
 
-    ///
-    function gatewayDecryptAnalyse(
+    function gatewayDecryptQueryResult(
         uint256 requestId,
         uint256 _finalSelectedCount,
         uint256 _finalResult
     ) public onlyGateway {
         uint256 queryId = gatewayRequestId[requestId];
 
-        // FIXME: have better naming please
-        queryData[queryId].finalSelectedCount = _finalSelectedCount;
-        queryData[queryId].finalResult = _finalResult;
-        queryData[queryId].isCompleted = true;
+        // Document this behaviour please
+        // TODO: To avoid double check, in the case we have not enough participants
+        // we are going to received a _finalSelectedCount = 0
 
-        // emit event
+        // Handle the case where we do not reach enough threshold votes
+        if (_finalSelectedCount == 0) {
+            queryData[queryId].isCompleted = true;
+            queryData[queryId].isInvalid = true;
+        } else {
+            queryData[queryId].finalSelectedCount = _finalSelectedCount;
+            queryData[queryId].finalResult = _finalResult;
+            queryData[queryId].isCompleted = true;
+        }
+
+        // TODO: Emit event
     }
 }
