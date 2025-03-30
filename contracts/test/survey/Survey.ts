@@ -7,7 +7,7 @@ import { FhevmInstance } from "fhevmjs/node";
 import { ethers, network } from "hardhat";
 
 import { Survey } from "../../types";
-import { ISurvey, SurveyDataStruct, SurveyParamsStruct } from "../../types/contracts/interfaces/ISurvey";
+import { SurveyDataStruct, SurveyParamsStruct } from "../../types/contracts/interfaces/ISurvey";
 import { awaitAllDecryptionResults } from "../asyncDecrypt";
 import { ACCOUNT_NAMES } from "../constants";
 import { createInstance } from "../instance";
@@ -340,7 +340,7 @@ describe("Survey", function () {
     // Reveal the survey and check the expected result
     const surveyDataAfterVoting = await this.revealSurveyResult(0);
     expect(surveyDataAfterVoting.isCompleted).to.be.true;
-    expect(surveyDataAfterVoting.isInvalid).to.be.false;
+    expect(surveyDataAfterVoting.isValid).to.be.true;
     expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
     expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
   });
@@ -374,11 +374,11 @@ describe("Survey", function () {
 
       const surveyDataAfterVoting = await this.revealSurveyResult(0);
       expect(surveyDataAfterVoting.isCompleted).to.be.true;
-      expect(surveyDataAfterVoting.isInvalid).to.be.false;
+      expect(surveyDataAfterVoting.isValid).to.be.true;
       expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
       expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
 
-      // TODO: automate in case more users?
+      // TODO: automate in case more users? Dynamic cursor ;)
       // Create and execute the query
       await this.survey.createQuery(0, params.filters);
       await this.survey["executeQuery(uint256)"](0);
@@ -388,11 +388,11 @@ describe("Survey", function () {
       const queryData = await this.survey.queryData(0);
       expect(queryData.isCompleted).to.be.true;
       if (params.expectToBeValid) {
-        expect(queryData.isInvalid).to.be.false;
+        expect(queryData.isValid).to.be.true;
         expect(queryData.finalSelectedCount).to.be.equals(4);
         expect(queryData.finalResult).to.be.equals(4);
       } else {
-        expect(queryData.isInvalid).to.be.true;
+        expect(queryData.isValid).to.be.false;
       }
     });
   });

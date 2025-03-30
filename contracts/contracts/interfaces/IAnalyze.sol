@@ -21,7 +21,7 @@ struct QueryData {
     euint256 pendingSelectedNumber;
     uint256 cursor; // Processing index of the batch
     bool isCompleted; // Is the anlysis completed
-    bool isInvalid; // When completed, indicate if the analysis is invalid or not
+    bool isValid; // When completed, indicate if the analysis is invalid or not
     // Store result attributes
     uint256 finalSelectedCount;
     uint256 finalResult;
@@ -43,6 +43,8 @@ interface IAnalyze {
     error AlreadyCompletedQuery();
 
     event QueryCreated(uint256 indexed queryId, uint256 indexed surveyId, address analyser);
+
+    // event QueryCompleted(uint256 indexed queryId, uint256 indexed surveyId, address analyser);
 
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256);
 

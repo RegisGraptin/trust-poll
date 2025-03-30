@@ -70,7 +70,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             encryptedResponses: eResponses,
             finalResult: 0,
             isCompleted: false,
-            isInvalid: false
+            isValid: false
         });
 
         emit SurveyCreated(_surveyIds, msg.sender, params.surveyType, params.surveyPrompt);
@@ -189,7 +189,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         // Check we have enough participants
         if (_surveyData[surveyId].currentParticipants < _surveyParams[surveyId].minResponseThreshold) {
-            _surveyData[surveyId].isInvalid = true;
             _surveyData[surveyId].isCompleted = true;
 
             // TODO: Emit event / Should we keep the completed one?
@@ -224,7 +223,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             revert UnfinishedSurveyPeriod();
         }
 
-        if (_surveyData[surveyId].isInvalid) {
+        if (!_surveyData[surveyId].isValid) {
             revert InvalidSurvey();
         }
 
@@ -248,7 +247,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             pendingSelectedNumber: pendingSelectedNumber,
             cursor: 0,
             isCompleted: false,
-            isInvalid: false,
+            isValid: false,
             finalSelectedCount: 0,
             finalResult: 0
         });
@@ -393,6 +392,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         uint256 surveyId = gatewayRequestId[requestId];
         _surveyData[surveyId].finalResult = result;
         _surveyData[surveyId].isCompleted = true;
+        _surveyData[surveyId].isValid = true;
 
         emit SurveyCompleted(
             surveyId,
@@ -416,11 +416,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // Handle the case where we do not reach enough threshold votes
         if (_finalSelectedCount == 0) {
             queryData[queryId].isCompleted = true;
-            queryData[queryId].isInvalid = true;
         } else {
             queryData[queryId].finalSelectedCount = _finalSelectedCount;
             queryData[queryId].finalResult = _finalResult;
             queryData[queryId].isCompleted = true;
+            queryData[queryId].isValid = true;
         }
 
         // TODO: Emit event
