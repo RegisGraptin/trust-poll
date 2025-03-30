@@ -41,25 +41,25 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
     function createSurvey(SurveyParams memory params) external returns (uint256) {
         // Have a valid prompt
-        if (bytes(params.surveyPrompt).length == 0) revert InvalidSurveyPrompt();
+        if (bytes(params.surveyPrompt).length == 0) revert InvalidSurveyParameter("Survey prompt is empty");
 
         if (params.isWhitelisted) {
             // Have a valid root hash in case of whitelisted
             if (params.whitelistRootHash == bytes32(0)) {
-                revert InvalidSurveyWhitelist();
+                revert InvalidSurveyParameter("Whitelist root hash is null");
             }
 
             // Have enough participants
             if (params.numberOfParticipants < 2) {
-                revert InvalidNumberOfParticipants();
+                revert InvalidSurveyParameter("Not enough participant");
             }
         }
 
         // Have a valid end time
-        if (params.surveyEndTime < block.timestamp) revert InvalidEndTime();
+        if (params.surveyEndTime < block.timestamp) revert InvalidSurveyParameter("Invalid end time");
 
         // Have a valid threshold
-        if (params.minResponseThreshold <= 3) revert InvalidResponseThreshold();
+        if (params.minResponseThreshold <= 3) revert InvalidSurveyParameter("Invalid minimum response threshold");
 
         euint256 eResponses = TFHE.asEuint256(0);
         TFHE.allowThis(eResponses);
@@ -107,10 +107,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // In case of whitelisted survey, check the user access
         if (_surveyParams[surveyId].isWhitelisted) {
             bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender))));
-            require(
-                MerkleProof.verify(whitelistProof, _surveyParams[surveyId].whitelistRootHash, leaf),
-                "Invalid proof"
-            );
+            if (!MerkleProof.verify(whitelistProof, _surveyParams[surveyId].whitelistRootHash, leaf)) {
+                revert InvalidMerkleProof();
+            }
         }
 
         // Check metadata type
@@ -130,11 +129,18 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             }
         }
 
+        // TODO: We have a point on the user verification steps. How can we efficiently
+        // verify user input as it will need two steps with the gateway?
+
+        // Entry vote + verification
+        // Gateway confirmed vote - we also store a boolean to indicate if the vote is valid or not
+        // Can finally incentivize result when good one
+
         // Check the value of the metadata
         // FIXME: Not sure we can reveal it and use it. This means, we potentially needs to have another
         // verification layer. What can be done, is to add a boolean isValid, that will valiate it
         // in another step.
-        ebool validEntry = _applyMetadataFilter(_surveyParams[surveyId].constraints, checkedMetadatValue);
+        // ebool validEntry = _applyMetadataFilter(_surveyParams[surveyId].constraints, checkedMetadatValue);
         // FIXME: check with zama how to filter on it
         // TODO: Possibility to check the medata value by adding some constraint on it
 
@@ -190,9 +196,13 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // Check we have enough participants
         if (_surveyData[surveyId].currentParticipants < _surveyParams[surveyId].minResponseThreshold) {
             _surveyData[surveyId].isCompleted = true;
-
-            // TODO: Emit event / Should we keep the completed one?
-
+            emit SurveyCompleted(
+                surveyId,
+                false,
+                _surveyParams[surveyId].surveyType,
+                _surveyData[surveyId].currentParticipants,
+                0
+            );
             return;
         }
 
@@ -226,6 +236,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         if (!_surveyData[surveyId].isValid) {
             revert InvalidSurvey();
         }
+
+        // FIXME: Do we want to take a fees? payable?
 
         // // TODO: Need to verify the input filter compared to the type
         // Filter[][] storage _filters = new Filter[][](params.length);
@@ -396,22 +408,24 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         emit SurveyCompleted(
             surveyId,
+            true,
             _surveyParams[surveyId].surveyType,
             _surveyData[surveyId].currentParticipants,
             result
         );
     }
 
+    /// @notice
+    ///
+    // Document this behaviour please + analyse contract doc + readme please
+    // TODO: To avoid double check, in the case we have not enough participants
+    // we are going to received a _finalSelectedCount = 0
     function gatewayDecryptQueryResult(
         uint256 requestId,
         uint256 _finalSelectedCount,
         uint256 _finalResult
     ) public onlyGateway {
         uint256 queryId = gatewayRequestId[requestId];
-
-        // Document this behaviour please
-        // TODO: To avoid double check, in the case we have not enough participants
-        // we are going to received a _finalSelectedCount = 0
 
         // Handle the case where we do not reach enough threshold votes
         if (_finalSelectedCount == 0) {
@@ -423,6 +437,12 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             queryData[queryId].isValid = true;
         }
 
-        // TODO: Emit event
+        emit QueryCompleted(
+            queryId,
+            queryData[queryId].surveyId,
+            queryData[queryId].isValid,
+            queryData[queryId].finalSelectedCount,
+            queryData[queryId].finalResult
+        );
     }
 }

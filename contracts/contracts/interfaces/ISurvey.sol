@@ -38,13 +38,12 @@ struct VoteData {
 
 interface ISurvey {
     error InvalidSurveyId();
-    error InvalidSurveyPrompt();
-    error InvalidSurveyWhitelist();
-    error InvalidEndTime();
-    error InvalidResponseThreshold();
-    error InvalidMetadata();
+
+    error InvalidSurveyParameter(string field);
+
     error InvalidUserMetadata(); // Doublon?
-    error InvalidNumberOfParticipants(); // TODO : Adjust naming
+
+    error InvalidMerkleProof();
 
     error ResultAlreadyReveal();
     error UnfinishedSurveyPeriod();
@@ -52,13 +51,18 @@ interface ISurvey {
 
     error FinishedSurvey();
     error ThresholdNeeded(); // TODO: better naming please
-    error InvalidRevealAction();
 
     event SurveyCreated(uint256 indexed surveyId, address organizer, SurveyType surveyType, string surveyPrompt);
 
     event EntrySubmitted(uint256 indexed surveyId, address user);
 
-    event SurveyCompleted(uint256 indexed surveyId, SurveyType surveyType, uint256 numberOfVotes, uint256 response);
+    event SurveyCompleted(
+        uint256 indexed surveyId,
+        bool isValid,
+        SurveyType surveyType,
+        uint256 numberOfVotes,
+        uint256 response
+    );
 
     /// View function
     function surveyData(uint256 surveyId) external view returns (SurveyData memory);
@@ -71,10 +75,6 @@ interface ISurvey {
     /// @param params Parameter of the Survey.
     /// @return surveyId The id of the survey.
     function createSurvey(SurveyParams memory params) external returns (uint256);
-
-    // FIXME: Create two functions - one for whitelisted and another for simple one
-    // Two entrypoints but go to a single one
-    // Easier on frontend integration
 
     function submitEntry(
         uint256 surveyId,

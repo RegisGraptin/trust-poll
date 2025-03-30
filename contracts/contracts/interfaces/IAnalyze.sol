@@ -44,6 +44,14 @@ interface IAnalyze {
 
     event QueryCreated(uint256 indexed queryId, uint256 indexed surveyId, address analyser);
 
+    event QueryCompleted(
+        uint256 indexed queryId,
+        uint256 indexed surveyId,
+        bool isValid,
+        uint256 finalSelectedCount,
+        uint256 finalResult
+    );
+
     // event QueryCompleted(uint256 indexed queryId, uint256 indexed surveyId, address analyser);
 
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256);
