@@ -16,8 +16,8 @@ import { IAnalyze, QueryData } from "./interfaces/IAnalyze.sol";
 
 contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
     uint256 private _surveyIds;
-    mapping(uint256 => SurveyParams) public surveyParams;
-    mapping(uint256 => SurveyData) public surveyData;
+    mapping(uint256 => SurveyParams) _surveyParams;
+    mapping(uint256 => SurveyData) _surveyData;
 
     mapping(uint256 => VoteData[]) voteData;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
@@ -26,6 +26,14 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     mapping(uint256 => QueryData) public queryData;
 
     mapping(uint256 requestId => uint256 surveyId) gatewayRequestId;
+
+    function surveyParams(uint256 surveyId) external view returns (SurveyParams memory) {
+        return _surveyParams[surveyId];
+    }
+
+    function surveyData(uint256 surveyId) external view returns (SurveyData memory) {
+        return _surveyData[surveyId];
+    }
 
     //////////////////////////////////////////////////////////////////
     /// Survey management
@@ -56,8 +64,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         euint256 eResponses = TFHE.asEuint256(0);
         TFHE.allowThis(eResponses);
 
-        surveyParams[_surveyIds] = params;
-        surveyData[_surveyIds] = SurveyData({
+        _surveyParams[_surveyIds] = params;
+        _surveyData[_surveyIds] = SurveyData({
             currentParticipants: 0,
             encryptedResponses: eResponses,
             finalResult: 0,
@@ -84,7 +92,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             revert InvalidSurveyId();
         }
 
-        if (block.timestamp >= surveyParams[surveyId].surveyEndTime) {
+        if (block.timestamp >= _surveyParams[surveyId].surveyEndTime) {
             revert FinishedSurvey();
         }
 
@@ -92,24 +100,24 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             revert UserAlreadyVoted();
         }
 
-        if (surveyParams[surveyId].metadataTypes.length != metadata.length) {
+        if (_surveyParams[surveyId].metadataTypes.length != metadata.length) {
             revert InvalidUserMetadata();
         }
 
         // In case of whitelisted survey, check the user access
-        if (surveyParams[surveyId].isWhitelisted) {
+        if (_surveyParams[surveyId].isWhitelisted) {
             bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender))));
             require(
-                MerkleProof.verify(whitelistProof, surveyParams[surveyId].whitelistRootHash, leaf),
+                MerkleProof.verify(whitelistProof, _surveyParams[surveyId].whitelistRootHash, leaf),
                 "Invalid proof"
             );
         }
 
         // Check metadata type
         // TODO: Internal function as we need to check if it is valid?
-        uint256[] memory checkedMetadatValue = new uint256[](surveyParams[surveyId].metadataTypes.length);
-        for (uint256 i = 0; i < surveyParams[surveyId].metadataTypes.length; i++) {
-            MetadataType _type = surveyParams[surveyId].metadataTypes[i];
+        uint256[] memory checkedMetadatValue = new uint256[](_surveyParams[surveyId].metadataTypes.length);
+        for (uint256 i = 0; i < _surveyParams[surveyId].metadataTypes.length; i++) {
+            MetadataType _type = _surveyParams[surveyId].metadataTypes[i];
 
             if (_type == MetadataType.BOOLEAN) {
                 ebool val = TFHE.asEbool(metadata[i], inputProof);
@@ -126,7 +134,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // FIXME: Not sure we can reveal it and use it. This means, we potentially needs to have another
         // verification layer. What can be done, is to add a boolean isValid, that will valiate it
         // in another step.
-        ebool validEntry = _applyMetadataFilter(surveyParams[surveyId].constraints, checkedMetadatValue);
+        ebool validEntry = _applyMetadataFilter(_surveyParams[surveyId].constraints, checkedMetadatValue);
         // FIXME: check with zama how to filter on it
         // TODO: Possibility to check the medata value by adding some constraint on it
 
@@ -134,9 +142,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
         TFHE.allowThis(eVote);
 
-        surveyData[surveyId].encryptedResponses = TFHE.add(surveyData[surveyId].encryptedResponses, eVote);
-        surveyData[surveyId].currentParticipants++;
-        TFHE.allowThis(surveyData[surveyId].encryptedResponses);
+        _surveyData[surveyId].encryptedResponses = TFHE.add(_surveyData[surveyId].encryptedResponses, eVote);
+        _surveyData[surveyId].currentParticipants++;
+        TFHE.allowThis(_surveyData[surveyId].encryptedResponses);
 
         // Save vote info
         VoteData memory _voteData = VoteData({ data: eVote, metadata: checkedMetadatValue });
@@ -170,19 +178,19 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
     function revealResults(uint256 surveyId) external {
         // Need the survey to be finished
-        if (block.timestamp < surveyParams[surveyId].surveyEndTime) {
+        if (block.timestamp < _surveyParams[surveyId].surveyEndTime) {
             revert UnfinishedSurveyPeriod();
         }
 
         // Already completed
-        if (surveyData[surveyId].isCompleted) {
+        if (_surveyData[surveyId].isCompleted) {
             revert ResultAlreadyReveal();
         }
 
         // Check we have enough participants
-        if (surveyData[surveyId].currentParticipants < surveyParams[surveyId].minResponseThreshold) {
-            surveyData[surveyId].isInvalid = true;
-            surveyData[surveyId].isCompleted = true;
+        if (_surveyData[surveyId].currentParticipants < _surveyParams[surveyId].minResponseThreshold) {
+            _surveyData[surveyId].isInvalid = true;
+            _surveyData[surveyId].isCompleted = true;
 
             // TODO: Emit event / Should we keep the completed one?
 
@@ -191,7 +199,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         // Decypher the result
         uint256[] memory cts = new uint256[](1);
-        cts[0] = Gateway.toUint256(surveyData[surveyId].encryptedResponses);
+        cts[0] = Gateway.toUint256(_surveyData[surveyId].encryptedResponses);
         uint256 _requestId = Gateway.requestDecryption(
             cts,
             this.gatewayDecryptVoteResult.selector,
@@ -212,11 +220,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     }
 
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256) {
-        if (!surveyData[surveyId].isCompleted) {
+        if (!_surveyData[surveyId].isCompleted) {
             revert UnfinishedSurveyPeriod();
         }
 
-        if (surveyData[surveyId].isInvalid) {
+        if (_surveyData[surveyId].isInvalid) {
             revert InvalidSurvey();
         }
 
@@ -370,13 +378,13 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     /// Gateway Callback - Decrypt the vote result
     function gatewayDecryptVoteResult(uint256 requestId, uint256 result) public onlyGateway {
         uint256 surveyId = gatewayRequestId[requestId];
-        surveyData[surveyId].finalResult = result;
-        surveyData[surveyId].isCompleted = true;
+        _surveyData[surveyId].finalResult = result;
+        _surveyData[surveyId].isCompleted = true;
 
         emit SurveyCompleted(
             surveyId,
-            surveyParams[surveyId].surveyType,
-            surveyData[surveyId].currentParticipants,
+            _surveyParams[surveyId].surveyType,
+            _surveyData[surveyId].currentParticipants,
             result
         );
     }
@@ -392,7 +400,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // FIXME: have better naming please
         queryData[queryId].finalSelectedCount = _finalSelectedCount;
         queryData[queryId].finalResult = _finalResult;
-        queryData[requestId].isCompleted = true;
+        queryData[queryId].isCompleted = true;
 
         // emit event
     }

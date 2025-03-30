@@ -72,7 +72,7 @@ describe("Survey", function () {
       whitelistRootHash: this.whitelistedTree.root,
       numberOfParticipants: this.whitelistedTree.values.length,
       surveyEndTime: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // +7 days
-      responseThreshold: 4,
+      minResponseThreshold: 4,
       metadataTypes: [],
     };
 

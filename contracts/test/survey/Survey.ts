@@ -1,12 +1,25 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { FhevmInstance } from "fhevmjs/node";
+import { ethers, network } from "hardhat";
 
+import { Survey } from "../../types";
+import { ISurvey, SurveyDataStruct, SurveyParamsStruct } from "../../types/contracts/interfaces/ISurvey";
 import { awaitAllDecryptionResults } from "../asyncDecrypt";
 import { ACCOUNT_NAMES } from "../constants";
 import { createInstance } from "../instance";
 import { getSigners, initSigners } from "../signers";
 import { deploySurveyFixture } from "./Survey.fixture";
+
+declare module "mocha" {
+  export interface Context {
+    contractAddress: string;
+    survey: Survey;
+    fhevm: FhevmInstance;
+    revealSurveyResult: (surveyId: number) => Promise<SurveyDataStruct>;
+  }
+}
 
 enum SurveyType {
   POLLING = 0,
@@ -20,15 +33,16 @@ enum MetadataType {
 
 const SURVEY_END_TIME = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
 
-const validSurveyParam = {
+const validSurveyParam: SurveyParamsStruct = {
   surveyPrompt: "Are you in favor of privacy?",
   surveyType: SurveyType.POLLING,
   isWhitelisted: false,
   whitelistRootHash: new Uint8Array(32),
   numberOfParticipants: 0, // Optional parameter - need to be defined when whitelisted activated
   surveyEndTime: SURVEY_END_TIME,
-  responseThreshold: 4,
+  minResponseThreshold: 4,
   metadataTypes: [],
+  constraints: [],
 };
 
 const invalidSurveyParamsTestCases = [
@@ -49,13 +63,16 @@ const invalidSurveyParamsTestCases = [
   },
   {
     name: "zero response threshold",
-    params: { responseThreshold: 0 },
+    params: { minResponseThreshold: 0 },
     error: "InvalidResponseThreshold",
   },
   // Add more test cases as needed
 ];
 
 describe("Survey", function () {
+  // We are using snapshot allowing us to reset the environment from executing test
+  let snapshotId: string;
+
   before(async function () {
     await initSigners();
     this.signers = await getSigners();
@@ -68,6 +85,7 @@ describe("Survey", function () {
     this.fhevm = await createInstance();
 
     // Helper functions
+    // TODO: See how to defined typing
 
     /// Submit entry for polling survey
     this.submitPollingEntry = async (
@@ -101,20 +119,43 @@ describe("Survey", function () {
           }
         }
       }
-      inputs = await inputs.encrypt();
+      const encryptedInputs = await inputs.encrypt();
 
       let userEncryptedMetadata = [];
       for (let index = 0; index < surveyMetadataType.length; index++) {
-        userEncryptedMetadata.push(inputs.handles[index + 1]);
+        userEncryptedMetadata.push(encryptedInputs.handles[index + 1]);
       }
 
       // Create a new entry
       // ["submitEntry(uint256,bytes32,uint256[],bytes)"]
       const transaction = await this.survey
         .connect(signer)
-        .submitEntry(surveyId, inputs.handles[0], userEncryptedMetadata, inputs.inputProof);
+        .submitEntry(surveyId, encryptedInputs.handles[0], userEncryptedMetadata, encryptedInputs.inputProof);
       await transaction.wait();
     };
+
+    this.revealSurveyResult = async (surveyId: number): Promise<SurveyDataStruct> => {
+      // Fetch the survey end time
+      const surveyData = await this.survey.surveyParams(surveyId);
+      await time.setNextBlockTimestamp(surveyData.surveyEndTime);
+
+      // Reveal the votes
+      await this.survey.revealResults(surveyId);
+
+      // Wait for the gateway execution
+      await awaitAllDecryptionResults();
+
+      // Return the survey data updated
+      return await this.survey.surveyData(surveyId);
+    };
+
+    // Create a snashot of the state
+    snapshotId = await network.provider.send("evm_snapshot");
+  });
+
+  afterEach(async () => {
+    // Revert to snapshot after each test
+    await network.provider.send("evm_revert", [snapshotId]);
   });
 
   it("should create a new survey", async function () {
@@ -124,10 +165,10 @@ describe("Survey", function () {
     // Check the survey information at the index 0
     const surveyData = await this.survey.surveyParams(0);
 
-    expect(surveyData[0]).to.be.equals("Are you in favor of privacy?");
-    expect(surveyData[2]).to.be.false;
-    expect(surveyData[5]).to.be.equals(SURVEY_END_TIME);
-    expect(surveyData[6]).to.be.equals(4);
+    expect(surveyData.surveyPrompt).to.be.equals("Are you in favor of privacy?");
+    expect(surveyData.isWhitelisted).to.be.false;
+    expect(surveyData.surveyEndTime).to.be.equals(SURVEY_END_TIME);
+    expect(surveyData.minResponseThreshold).to.be.equals(4);
 
     // Check that the user can vote
     expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.false;
@@ -142,7 +183,7 @@ describe("Survey", function () {
     });
   });
 
-  it("should handle polling survey with no metadata", async function () {
+  it("should reveal polling survey with no metadata", async function () {
     const pollingVotes = [true, true, false, true];
     const voterNames = ACCOUNT_NAMES;
 
@@ -154,35 +195,31 @@ describe("Survey", function () {
       await this.submitPollingEntry(this.signers[voterNames[index]], 0, pollingVotes[index]);
     }
 
-    // Now it is possible to reveal the polling
-    await this.survey.revealResults(0);
-
-    // Wait for the Gateway to decypher it
-    await awaitAllDecryptionResults();
-
-    // Verify the polling data
-    const surveyDataAfterVoting = await this.survey.surveyData(0);
-
-    // FIXME: have a structure automated to better handle position change when update
-    expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
-    expect(surveyDataAfterVoting[3]).to.be.equals(pollingVotes.filter(Boolean).length);
+    // Reveal the survey and check the expected result
+    const surveyDataAfterVoting = await this.revealSurveyResult(0);
+    expect(surveyDataAfterVoting.isCompleted).to.be.true;
+    expect(surveyDataAfterVoting.isInvalid).to.be.false;
+    expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
+    expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
   });
 
-  it("should handle polling survey with metadata", async function () {
-    const pollingVotes = [true, true, false, true];
-    // TODO: TBD
-    // age, gender
+  it("should handle polling survey with metadata and analyse it", async function () {
+    const voterNames = ACCOUNT_NAMES;
+    const pollingVotes = [true, true, false, true, false, true, true, true, true];
+
+    // [age, gender]
+    const surveyMetadataTypes = [MetadataType.UINT256, MetadataType.BOOLEAN];
     const userMetadata = [
       [24, true],
-      [53, true],
       [27, false],
       [28, true],
+      [47, false],
+      [48, false],
+      [53, true],
+      [54, false],
+      [55, true],
+      [56, true],
     ];
-    const voterNames = ACCOUNT_NAMES;
-
-    // FIXME: (v2) add metadata assignement
-
-    const surveyMetadataTypes = [MetadataType.UINT256, MetadataType.BOOLEAN];
 
     const surveyParam = {
       ...validSurveyParam,
@@ -192,9 +229,7 @@ describe("Survey", function () {
     const transaction = await this.survey.createSurvey(surveyParam);
     await transaction.wait();
 
-    // FIXME: Check survey metadata
-
-    // Do the voting
+    /// Voting part
     for (let index = 0; index < pollingVotes.length; index++) {
       await this.submitPollingEntry(
         this.signers[voterNames[index]],
@@ -205,24 +240,14 @@ describe("Survey", function () {
       );
     }
 
-    // Now it is possible to reveal the polling
-    await this.survey.revealResults(0);
+    const surveyDataAfterVoting = await this.revealSurveyResult(0);
+    expect(surveyDataAfterVoting.isCompleted).to.be.true;
+    expect(surveyDataAfterVoting.isInvalid).to.be.false;
+    expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
+    expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
 
-    // Wait for the Gateway to decypher it
-    await awaitAllDecryptionResults();
-
-    // Verify the polling data
-    const surveyDataAfterVoting = await this.survey.surveyData(0);
-
-    // FIXME: same have structure please
-    expect(surveyDataAfterVoting[0]).to.be.equals(pollingVotes.length);
-    expect(surveyDataAfterVoting[3]).to.be.equals(pollingVotes.filter(Boolean).length);
-
-    // Analyse it
-    // Analysts could then view aggregated results, for example, the breakdown of votes from men over 45.
-
-    // LargerThan
-
+    /// Analyse part
+    // Analysts could view aggregated results, for example, the breakdown of votes from men over 45.
     const filters = [
       [
         {
@@ -231,17 +256,16 @@ describe("Survey", function () {
         },
       ],
     ];
+    // Create and execute the query
     await this.survey.createQuery(0, filters);
-
-    // Now try to execute the query
-    await this.survey.executeQuery(0);
+    await this.survey["executeQuery(uint256)"](0);
     await awaitAllDecryptionResults(); // Wait for the gateway
 
-    // TODO: Now read the result
+    // Read the result
     const queryData = await this.survey.queryData(0);
-
-    console.log(queryData);
-    // uint256 selectedCount;
-    // uint256 result;
+    expect(queryData.isCompleted).to.be.true;
+    expect(queryData.isInvalid).to.be.false;
+    expect(queryData.finalSelectedCount).to.be.equals(4);
+    expect(queryData.finalResult).to.be.equals(4);
   });
 });

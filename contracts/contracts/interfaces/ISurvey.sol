@@ -37,31 +37,35 @@ struct VoteData {
 }
 
 interface ISurvey {
+    error InvalidSurveyId();
     error InvalidSurveyPrompt();
     error InvalidSurveyWhitelist();
     error InvalidEndTime();
     error InvalidResponseThreshold();
     error InvalidMetadata();
-    error ResultAlreadyReveal();
-
-    error InvalidSurveyId();
-    error UserAlreadyVoted();
-    error InvalidUserMetadata();
-    error FinishedSurvey();
-
+    error InvalidUserMetadata(); // Doublon?
     error InvalidNumberOfParticipants(); // TODO : Adjust naming
 
-    error ThresholdNeeded(); // TODO: better naming please
-
-    error InvalidRevealAction();
-
+    error ResultAlreadyReveal();
     error UnfinishedSurveyPeriod();
+    error UserAlreadyVoted();
+
+    error FinishedSurvey();
+    error ThresholdNeeded(); // TODO: better naming please
+    error InvalidRevealAction();
 
     event SurveyCreated(uint256 indexed surveyId, address organizer, SurveyType surveyType, string surveyPrompt);
 
     event EntrySubmitted(uint256 indexed surveyId, address user);
 
     event SurveyCompleted(uint256 indexed surveyId, SurveyType surveyType, uint256 numberOfVotes, uint256 response);
+
+    /// View function
+    function surveyData(uint256 surveyId) external view returns (SurveyData memory);
+
+    function surveyParams(uint256 surveyId) external view returns (SurveyParams memory);
+
+    /// Action function
 
     /// @notice Create a new survey.
     /// @param params Parameter of the Survey.
