@@ -19,22 +19,29 @@ struct GatewayUserEntry {
     uint256 voteId;
 }
 
+/// @title Trust Poll - Confidential Survey powered by FHE
+/// @dev This contract manages confidentia survey.
+///
+/// On the protocol, anyone can create a new survey. It
 contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
-    uint256 constant MAX_GATEWAY_COOLDOWN = 100;
+    /// @notice Delay of the Zama's gateway to decrypt the data
+    uint256 constant MAX_GATEWAY_DELAY = 100;
 
     uint256 private _surveyIds;
-    mapping(uint256 => SurveyParams) _surveyParams;
-    mapping(uint256 => SurveyData) _surveyData;
+    mapping(uint256 surveyId => SurveyParams) _surveyParams;
+    mapping(uint256 surveyId => SurveyData) _surveyData;
 
-    mapping(uint256 => VoteData[]) voteData;
-    mapping(uint256 => mapping(address => bool)) public hasVoted;
+    mapping(uint256 surveyId => VoteData[]) voteData;
+    mapping(uint256 surveyId => mapping(address userAddress => bool)) public hasVoted;
 
     uint256 private _queryIds;
     mapping(uint256 => QueryData) public queryData;
 
-    mapping(uint256 requestId => uint256 surveyId) gatewayRequestId;
-    mapping(uint256 requestId => GatewayUserEntry) gatewayConfirmUserEntryId;
+    // Gateway helper to retrieved context data
+    mapping(uint256 requestId => uint256 surveyId) gatewayRequestIdToSurveyId;
+    mapping(uint256 requestId => GatewayUserEntry) gatewayRequestIdToConfirmUserEntry;
 
+    /// @notice TODO: update naming
     MetadataVerifier _verifier;
 
     constructor() {
@@ -196,11 +203,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
                 cts,
                 this.gatewayConfirmUserEntry.selector,
                 0,
-                block.timestamp + MAX_GATEWAY_COOLDOWN,
+                block.timestamp + MAX_GATEWAY_DELAY,
                 false
             );
 
-            gatewayConfirmUserEntryId[_requestId] = GatewayUserEntry({
+            gatewayRequestIdToConfirmUserEntry[_requestId] = GatewayUserEntry({
                 surveyId: surveyId,
                 voteId: voteData[surveyId].length - 1
             });
@@ -236,7 +243,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         // Need the survey to be finished
         // TODO: Do we need to place a cooldown too?
-        if (block.timestamp < _surveyParams[surveyId].surveyEndTime) {
+        if (block.timestamp < _surveyParams[surveyId].surveyEndTime + MAX_GATEWAY_DELAY) {
             revert UnfinishedSurvey();
         }
 
@@ -265,11 +272,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             cts,
             this.gatewayDecryptSurveyResult.selector,
             0,
-            block.timestamp + MAX_GATEWAY_COOLDOWN,
+            block.timestamp + MAX_GATEWAY_DELAY,
             false
         );
 
-        gatewayRequestId[_requestId] = surveyId;
+        gatewayRequestIdToSurveyId[_requestId] = surveyId;
     }
 
     //////////////////////////////////////////////////////////////////
@@ -346,17 +353,23 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             // Get the vote data
             VoteData memory data = voteData[surveyId][queryData[queryId].cursor];
 
-            // Apply the filter
-            ebool takeIt = _verifier.applyFilterOnMetadata(queryData[queryId].filters, data.metadata);
-            euint256 isSelected = TFHE.select(takeIt, one, zero);
-            euint256 valueSelected = TFHE.select(takeIt, data.data, zero);
+            if (data.isValid) {
+                // Apply the filter
+                ebool takeIt = _verifier.applyFilterOnMetadata(queryData[queryId].filters, data.metadata);
+                euint256 isSelected = TFHE.select(takeIt, one, zero);
+                euint256 valueSelected = TFHE.select(takeIt, data.data, zero);
 
-            // Update the state
-            queryData[queryId].pendingSelectedNumber = TFHE.add(queryData[queryId].pendingSelectedNumber, isSelected);
-            queryData[queryId].pendingEncryptedResult = TFHE.add(
-                queryData[queryId].pendingEncryptedResult,
-                valueSelected
-            );
+                // Update the state
+                queryData[queryId].pendingSelectedNumber = TFHE.add(
+                    queryData[queryId].pendingSelectedNumber,
+                    isSelected
+                );
+                queryData[queryId].pendingEncryptedResult = TFHE.add(
+                    queryData[queryId].pendingEncryptedResult,
+                    valueSelected
+                );
+            }
+
             queryData[queryId].cursor++;
         }
 
@@ -392,11 +405,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
                 cts,
                 this.gatewayDecryptQueryResult.selector,
                 0,
-                block.timestamp + MAX_GATEWAY_COOLDOWN,
+                block.timestamp + MAX_GATEWAY_DELAY,
                 false
             );
 
-            gatewayRequestId[_requestId] = queryId;
+            gatewayRequestIdToSurveyId[_requestId] = queryId;
         }
     }
 
@@ -408,9 +421,12 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     /// Gateway Callback Functions
     //////////////////////////////////////////////////////////////////
 
-    /// Gateway Callback - Decrypt the vote result
+    /// Gateway Callback - Decrypt the survey result
+    /// @dev When calling the Gateway, we have verified beforehand that we had enough participants, meaning
+    /// that we had reached the expected threshold from the survey. In that case we are considering the survey
+    /// has valid and completed.
     function gatewayDecryptSurveyResult(uint256 requestId, uint256 result) public onlyGateway {
-        uint256 surveyId = gatewayRequestId[requestId];
+        uint256 surveyId = gatewayRequestIdToSurveyId[requestId];
         _surveyData[surveyId].finalResult = result;
         _surveyData[surveyId].isCompleted = true;
         _surveyData[surveyId].isValid = true;
@@ -424,9 +440,13 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         );
     }
 
+    /// Gateway Callback - Confirm user entry
+    /// Depending of the survey, we can attached constraints on the metadata. By using the gateway, we
+    /// can request to decrypt the encrypted verification parameter allowing us to confirm or not
+    /// the user entry for the given survey.
     function gatewayConfirmUserEntry(uint256 requestId, bool isValid) public onlyGateway {
         // FIXME: double check the calldata ?? Input ?
-        GatewayUserEntry storage _gatewayUserEntry = gatewayConfirmUserEntryId[requestId];
+        GatewayUserEntry storage _gatewayUserEntry = gatewayRequestIdToConfirmUserEntry[requestId];
 
         uint256 surveyId = _gatewayUserEntry.surveyId;
         uint256 voteId = _gatewayUserEntry.voteId;
@@ -439,17 +459,16 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         }
     }
 
-    /// @notice
-    ///
-    // Document this behaviour please + analyse contract doc + readme please
-    // TODO: To avoid double check, in the case we have not enough participants
-    // we are going to received a _finalSelectedCount = 0
+    /// Gateway Callback - Decrypt the query result
+    /// @dev To optimize the verification process, when we have an invalid query result, meaning we do not have reached
+    /// the expected threshold for the survey, we expect to received a `_finalSelectedCount` equals to 0.
+    /// In the contrary scenario, when having a valid query, we should have the expected decrypted result.
     function gatewayDecryptQueryResult(
         uint256 requestId,
         uint256 _finalSelectedCount,
         uint256 _finalResult
     ) public onlyGateway {
-        uint256 queryId = gatewayRequestId[requestId];
+        uint256 queryId = gatewayRequestIdToSurveyId[requestId];
 
         // Handle the case where we do not reach enough threshold votes
         if (_finalSelectedCount == 0) {

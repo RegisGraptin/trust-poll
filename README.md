@@ -79,6 +79,10 @@ Consideration:
 > We need more than 3 for the threshold and recomand more if possible
 > For the user also the same recommanded
 
+// TODO:: Add the possibility to add contraint, allowing us to validate or not the user metadata. Notice, that it is the responsability to determined the metadata limit.
+// For instance, we expect for the age a value between 0 and 110. However, if a choice of 20-30, can restraint the vote, and directly target user privacy.
+// We are providing the tools for efficient pravacy, however the survey design need to be though beforehand avoiding unexpected reveal.
+
 #### Sub group distinction
 
 When defining the metadata, we need to take into consideration the group we are going to analyse. For instance, if we are reliyng on some distinct attribute, it can potentially leaks the vote data, as we could potentially guess the value.
@@ -210,6 +214,16 @@ TOken allocation to contributed users? Need to brainstorm about it!
 - Disallow precise metadata combo. It will kind of limit the analysis, but we may want to avoid specific combinaison of metadata.
   => Could be handle if we are dealing with a single one but still need to keep privacy, which is the difficult part.
 
+- Create incentive mechanism when creating a new polling - and this one is validated, meaning at some point user validated and confirm it
+
+--> Need to think aobut potential exploit as bot created multiple survey, then voted for each of them to get some tokens.
+
+--> Think about the remuneration
+
+--> Human proof to avodi bot
+
+--> How to check user metadata consistency? Can we kind of centralize user metadata information?
+
 ## Avoid using encrypted indexes
 
 Currently, when we want to filter on some data, we need to iterate over all of them to be able to preserve homomorphic encryption.
@@ -243,3 +257,7 @@ When we create a query, we are storing when we can reveal it on the expected num
 => Hande it by a flag indicating if we want to decypher the data, when all the participants have voted or not.
 
 => Can slo be handle at the initialization by defining rules to the data aggregation.
+
+# Graph section
+
+// TODO: To optimize the verification process query verificaiton
