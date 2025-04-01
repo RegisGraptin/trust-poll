@@ -56,7 +56,6 @@ const validSurveyParam: SurveyParamsStruct = {
   surveyType: SurveyType.POLLING,
   isWhitelisted: false,
   whitelistRootHash: new Uint8Array(32),
-  numberOfParticipants: 0, // Optional parameter - need to be defined when whitelisted activated
   surveyEndTime: SURVEY_END_TIME,
   minResponseThreshold: 4,
   metadataTypes: [],
@@ -67,22 +66,22 @@ const invalidSurveyParamsTestCases = [
   {
     name: "empty survey prompt",
     params: { surveyPrompt: "" },
-    error: "InvalidSurveyPrompt",
+    error: "InvalidSurveyParameter",
   },
   {
     name: "is whitelisted but no root hash",
     params: { isWhitelisted: true, whitelistRootHash: new Uint8Array(32) },
-    error: "InvalidSurveyWhitelist",
+    error: "InvalidSurveyParameter",
   },
   {
     name: "past end time",
     params: { surveyEndTime: Math.floor(Date.now() / 1000) - 1000 },
-    error: "InvalidEndTime",
+    error: "InvalidSurveyParameter",
   },
   {
     name: "zero response threshold",
     params: { minResponseThreshold: 0 },
-    error: "InvalidResponseThreshold",
+    error: "InvalidSurveyParameter",
   },
   // Add more test cases as needed
 ];
@@ -293,7 +292,6 @@ describe("Survey", function () {
       ...validSurveyParam,
       isWhitelisted: true,
       whitelistRootHash: tree.root,
-      numberOfParticipants: whitelistedAddresses.length,
     };
     const transaction = await this.survey.createSurvey(surveyParams);
     await transaction.wait();

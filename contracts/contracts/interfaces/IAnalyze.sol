@@ -6,6 +6,8 @@ import "fhevm/gateway/GatewayCaller.sol";
 
 import { Filter } from "./IFilters.sol";
 
+// TODO: DOC + clean
+
 // FIXME: Should we apply a mapping on the type and the acceptable filter?
 
 // FIXME: we need to have an encrypted value which bring some qustion

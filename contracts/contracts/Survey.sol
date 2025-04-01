@@ -9,12 +9,19 @@ import { SepoliaZamaGatewayConfig } from "fhevm/config/ZamaGatewayConfig.sol";
 
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { MetadataType, VerifierType, Filter } from "./interfaces/IFilters.sol";
+import { MetadataVerifier, MetadataType, VerifierType, Filter } from "./interfaces/IFilters.sol";
 
 import { ISurvey, SurveyParams, SurveyData, VoteData } from "./interfaces/ISurvey.sol";
 import { IAnalyze, QueryData } from "./interfaces/IAnalyze.sol";
 
+struct GatewayUserEntry {
+    uint256 surveyId;
+    uint256 voteId;
+}
+
 contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
+    uint256 constant MAX_GATEWAY_COOLDOWN = 100;
+
     uint256 private _surveyIds;
     mapping(uint256 => SurveyParams) _surveyParams;
     mapping(uint256 => SurveyData) _surveyData;
@@ -26,6 +33,17 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     mapping(uint256 => QueryData) public queryData;
 
     mapping(uint256 requestId => uint256 surveyId) gatewayRequestId;
+    mapping(uint256 requestId => GatewayUserEntry) gatewayConfirmUserEntryId;
+
+    MetadataVerifier _verifier;
+
+    constructor() {
+        _verifier = new MetadataVerifier();
+    }
+
+    //////////////////////////////////////////////////////////////////
+    /// View functions
+    //////////////////////////////////////////////////////////////////
 
     function surveyParams(uint256 surveyId) external view returns (SurveyParams memory) {
         return _surveyParams[surveyId];
@@ -47,11 +65,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             // Have a valid root hash in case of whitelisted
             if (params.whitelistRootHash == bytes32(0)) {
                 revert InvalidSurveyParameter("Whitelist root hash is null");
-            }
-
-            // Have enough participants
-            if (params.numberOfParticipants < 2) {
-                revert InvalidSurveyParameter("Not enough participant");
             }
         }
 
@@ -79,6 +92,26 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         return _surveyIds - 1;
     }
 
+    function _confirmUserEntry(uint256 surveyId, uint256 voteId) internal {
+        // Add the vote to the poll
+        _surveyData[surveyId].encryptedResponses = TFHE.add(
+            _surveyData[surveyId].encryptedResponses,
+            voteData[surveyId][voteId].data
+        );
+        _surveyData[surveyId].currentParticipants++;
+        TFHE.allowThis(_surveyData[surveyId].encryptedResponses);
+
+        // Validate the user vote
+        voteData[surveyId][voteId].isValid = true;
+
+        // Confirm the user entry
+        emit ConfirmUserEntry(surveyId, voteData[surveyId][voteId].userAddress, true);
+    }
+
+    // Entry vote + verification
+    // Gateway confirmed vote - we also store a boolean to indicate if the vote is valid or not
+    // Can finally incentivize result when good one
+
     /// metadata parameter will be a list of encrypted arguments that should match the user type
     /// We could have [euint256, ebool, euint8, ...] input
     function _submitEntry(
@@ -88,6 +121,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         bytes calldata inputProof,
         bytes32[] memory whitelistProof
     ) internal {
+        // TODO: see how can I simplify the complexity of this function?
+
         if (surveyId >= _surveyIds) {
             revert InvalidSurveyId();
         }
@@ -112,6 +147,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             }
         }
 
+        // TODO: Move this logic in the modifer?
         // Check metadata type
         // TODO: Internal function as we need to check if it is valid?
         uint256[] memory checkedMetadatValue = new uint256[](_surveyParams[surveyId].metadataTypes.length);
@@ -129,31 +165,16 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             }
         }
 
-        // TODO: We have a point on the user verification steps. How can we efficiently
-        // verify user input as it will need two steps with the gateway?
-
-        // Entry vote + verification
-        // Gateway confirmed vote - we also store a boolean to indicate if the vote is valid or not
-        // Can finally incentivize result when good one
-
-        // Check the value of the metadata
-        // FIXME: Not sure we can reveal it and use it. This means, we potentially needs to have another
-        // verification layer. What can be done, is to add a boolean isValid, that will valiate it
-        // in another step.
-        // ebool validEntry = _applyMetadataFilter(_surveyParams[surveyId].constraints, checkedMetadatValue);
-        // FIXME: check with zama how to filter on it
-        // TODO: Possibility to check the medata value by adding some constraint on it
-
-        // Add a new vote
+        // Save the entry and then call the gateway to verify it
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
         TFHE.allowThis(eVote);
 
-        _surveyData[surveyId].encryptedResponses = TFHE.add(_surveyData[surveyId].encryptedResponses, eVote);
-        _surveyData[surveyId].currentParticipants++;
-        TFHE.allowThis(_surveyData[surveyId].encryptedResponses);
-
-        // Save vote info
-        VoteData memory _voteData = VoteData({ data: eVote, metadata: checkedMetadatValue });
+        VoteData memory _voteData = VoteData({
+            userAddress: msg.sender,
+            data: eVote,
+            metadata: checkedMetadatValue,
+            isValid: false
+        });
         voteData[surveyId].push(_voteData);
 
         // Add user to the hasvoted list
@@ -161,6 +182,32 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
         // Emit event
         emit EntrySubmitted(surveyId, msg.sender);
+
+        // Verification of the user metadata
+        // TODO: add more test here
+        if (_surveyParams[surveyId].constraints.length > 0) {
+            ebool isValid = _verifier.applyFilterOnMetadata(_surveyParams[surveyId].constraints, checkedMetadatValue);
+            TFHE.allowThis(isValid);
+
+            // Call the Gateway to verify the user metadata
+            uint256[] memory cts = new uint256[](1);
+            cts[0] = Gateway.toUint256(isValid);
+            uint256 _requestId = Gateway.requestDecryption(
+                cts,
+                this.gatewayConfirmUserEntry.selector,
+                0,
+                block.timestamp + MAX_GATEWAY_COOLDOWN,
+                false
+            );
+
+            gatewayConfirmUserEntryId[_requestId] = GatewayUserEntry({
+                surveyId: surveyId,
+                voteId: voteData[surveyId].length - 1
+            });
+        } else {
+            // If no verification needed save execution cost and validate the user entry
+            _confirmUserEntry(surveyId, voteData[surveyId].length - 1);
+        }
     }
 
     function submitEntry(
@@ -183,9 +230,14 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     }
 
     function revealResults(uint256 surveyId) external {
+        if (surveyId >= _surveyIds) {
+            revert InvalidSurveyId();
+        }
+
         // Need the survey to be finished
+        // TODO: Do we need to place a cooldown too?
         if (block.timestamp < _surveyParams[surveyId].surveyEndTime) {
-            revert UnfinishedSurveyPeriod();
+            revert UnfinishedSurvey();
         }
 
         // Already completed
@@ -213,7 +265,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             cts,
             this.gatewayDecryptSurveyResult.selector,
             0,
-            block.timestamp + 100,
+            block.timestamp + MAX_GATEWAY_COOLDOWN,
             false
         );
 
@@ -229,25 +281,22 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     }
 
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256) {
+        // FEATURE: Do we want to take a fees? payable?
+
+        if (surveyId >= _surveyIds) {
+            revert InvalidSurveyId();
+        }
+
         if (!_surveyData[surveyId].isCompleted) {
-            revert UnfinishedSurveyPeriod();
+            revert UnfinishedSurvey();
         }
 
         if (!_surveyData[surveyId].isValid) {
             revert InvalidSurvey();
         }
 
-        // FIXME: Do we want to take a fees? payable?
-
-        // // TODO: Need to verify the input filter compared to the type
-        // Filter[][] storage _filters = new Filter[][](params.length);
-        // for (uint256 i = 0; i < params.length; i++) {
-        //     _filters[i] = new Filter[](params[i].length);
-        //     for (uint256 j = 0; j < params[i].length; j++) {
-        //         // Copy individual Filter struct
-        //         _filters[i][j] = params[i][j];
-        //     }
-        // }
+        // Verify the filter operation are valid based on the metadata
+        _verifier.validateFilter(_surveyParams[surveyId].metadataTypes, params);
 
         euint256 pendingEncryptedResult = TFHE.asEuint256(0);
         euint256 pendingSelectedNumber = TFHE.asEuint256(0);
@@ -269,46 +318,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         _queryIds++;
 
         return _queryIds - 1;
-    }
-
-    // TODO: Adjust where to put it the function as used on the two parts
-
-    function _applyFilter(Filter memory filter, uint256 userData) internal returns (ebool) {
-        ebool isVerified;
-
-        VerifierType _verifierType = filter.verifier;
-
-        if (_verifierType == VerifierType.LargerThan) {
-            // TODO: Depending of th number of data, we can have a huge cost here
-            // by doing abi.decode() and asEuint256 operation.
-            // Need to think a smarter approach, maybe?
-            euint256 eVal = TFHE.asEuint256(abi.decode(filter.value, (uint256)));
-
-            euint256 eUsr = euint256.wrap(userData);
-
-            isVerified = TFHE.gt(eUsr, eVal);
-        } else if (_verifierType == VerifierType.SmallerThan) {
-            // TODO:
-        } else {
-            // FIXME:
-        }
-
-        return isVerified;
-    }
-
-    function _applyMetadataFilter(Filter[][] memory filters, uint256[] memory userFilter) internal returns (ebool) {
-        // By default, it is accepted
-        ebool isValid = TFHE.asEbool(true);
-
-        // In this part, we can assume the filter are valid, as we will verify them before
-        for (uint256 i = 0; i < filters.length; i++) {
-            // Apply the filter on the user metadata
-            for (uint256 j = 0; j < filters[i].length; j++) {
-                isValid = TFHE.and(isValid, _applyFilter(filters[i][j], userFilter[i]));
-            }
-        }
-
-        return isValid;
     }
 
     function executeQuery(uint256 queryId, uint256 limit) public {
@@ -338,7 +347,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             VoteData memory data = voteData[surveyId][queryData[queryId].cursor];
 
             // Apply the filter
-            ebool takeIt = _applyMetadataFilter(queryData[queryId].filters, data.metadata);
+            ebool takeIt = _verifier.applyFilterOnMetadata(queryData[queryId].filters, data.metadata);
             euint256 isSelected = TFHE.select(takeIt, one, zero);
             euint256 valueSelected = TFHE.select(takeIt, data.data, zero);
 
@@ -383,7 +392,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
                 cts,
                 this.gatewayDecryptQueryResult.selector,
                 0,
-                block.timestamp + 100,
+                block.timestamp + MAX_GATEWAY_COOLDOWN,
                 false
             );
 
@@ -413,6 +422,21 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             _surveyData[surveyId].currentParticipants,
             result
         );
+    }
+
+    function gatewayConfirmUserEntry(uint256 requestId, bool isValid) public onlyGateway {
+        // FIXME: double check the calldata ?? Input ?
+        GatewayUserEntry storage _gatewayUserEntry = gatewayConfirmUserEntryId[requestId];
+
+        uint256 surveyId = _gatewayUserEntry.surveyId;
+        uint256 voteId = _gatewayUserEntry.voteId;
+
+        // In case of valid vote, update our poll data
+        if (isValid) {
+            _confirmUserEntry(surveyId, voteId);
+        } else {
+            emit ConfirmUserEntry(surveyId, voteData[surveyId][voteId].userAddress, false);
+        }
     }
 
     /// @notice
