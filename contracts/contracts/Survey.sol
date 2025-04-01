@@ -9,7 +9,7 @@ import { SepoliaZamaGatewayConfig } from "fhevm/config/ZamaGatewayConfig.sol";
 
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { MetadataVerifier, MetadataType, VerifierType, Filter } from "./interfaces/IFilters.sol";
+import { MetadataVerifier, MetadataType, Filter } from "./interfaces/IFilters.sol";
 
 import { ISurvey, SurveyParams, SurveyData, VoteData } from "./interfaces/ISurvey.sol";
 import { IAnalyze, QueryData } from "./interfaces/IAnalyze.sol";
@@ -193,7 +193,11 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // Verification of the user metadata
         // TODO: add more test here
         if (_surveyParams[surveyId].constraints.length > 0) {
-            ebool isValid = _verifier.applyFilterOnMetadata(_surveyParams[surveyId].constraints, checkedMetadatValue);
+            ebool isValid = _verifier.applyFilterOnMetadata(
+                _surveyParams[surveyId].constraints,
+                _surveyParams[surveyId].metadataTypes,
+                checkedMetadatValue
+            );
             TFHE.allowThis(isValid);
 
             // Call the Gateway to verify the user metadata
@@ -355,7 +359,12 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
 
             if (data.isValid) {
                 // Apply the filter
-                ebool takeIt = _verifier.applyFilterOnMetadata(queryData[queryId].filters, data.metadata);
+                ebool takeIt = _verifier.applyFilterOnMetadata(
+                    queryData[queryId].filters,
+                    _surveyParams[surveyId].metadataTypes,
+                    data.metadata
+                );
+
                 euint256 isSelected = TFHE.select(takeIt, one, zero);
                 euint256 valueSelected = TFHE.select(takeIt, data.data, zero);
 
