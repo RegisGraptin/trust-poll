@@ -121,12 +121,10 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         if (hasVoted[surveyId][msg.sender]) revert UserAlreadyVoted();
     }
 
-    // Entry vote + verification
-    // Gateway confirmed vote - we also store a boolean to indicate if the vote is valid or not
-    // Can finally incentivize result when good one
-
-    /// metadata parameter will be a list of encrypted arguments that should match the user type
-    /// We could have [euint256, ebool, euint8, ...] input
+    /// @dev Some survey might have a list of constraint on the metadata to verify it is correct value.
+    /// In that case, we are using the gateway to verify the expected validity of the metadata input.
+    /// When no constraints defined, we are skipping this behaviour.
+    /// FEATURE: We can think on an incentivize mechanism, when doing a verification on the user metadata.
     function _submitEntry(
         uint256 surveyId,
         einput eInputVote,
@@ -237,7 +235,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         }
 
         // Survey must be finished
-        // Wait for the verification on the encrypted entries
+        // Wait for verification on the encrypted entries
         if (block.timestamp < _surveyParams[surveyId].surveyEndTime + MAX_GATEWAY_DELAY) {
             revert UnfinishedSurvey();
         }
@@ -282,9 +280,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         return queryData[queryId];
     }
 
+    // FEATURE: Possibility to add fees when creating new analysis to reward the participants
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256) {
-        // FEATURE: Do we want to take a fees? payable?
-
         if (surveyId >= _surveyIds) {
             revert InvalidSurveyId();
         }
@@ -371,10 +368,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             queryData[queryId].cursor++;
         }
 
-        // In case of last iteration - Potentially reveal the value
+        // In case of the last iteration - Potentially reveal the value
         if (queryData[queryId].cursor >= voteData[surveyId].length) {
             // Check the threshold of data and also the opposite one!
-
             euint256 thresholdDown = TFHE.asEuint256(_surveyParams[surveyId].minResponseThreshold);
             euint256 thresholdUp = TFHE.asEuint256(
                 _surveyData[surveyId].currentParticipants - _surveyParams[surveyId].minResponseThreshold
