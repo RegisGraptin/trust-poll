@@ -80,7 +80,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         if (params.surveyEndTime < block.timestamp) revert InvalidSurveyParameter("Invalid end time");
 
         // Have a valid threshold
-        if (params.minResponseThreshold <= 3) revert InvalidSurveyParameter("Invalid minimum response threshold");
+        if (params.minResponseThreshold < 3) revert InvalidSurveyParameter("Invalid minimum response threshold");
 
         euint256 eResponses = TFHE.asEuint256(0);
         TFHE.allowThis(eResponses);
@@ -169,13 +169,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         euint256 eVote = TFHE.asEuint256(eInputVote, inputProof);
         TFHE.allowThis(eVote);
 
-        VoteData memory _voteData = VoteData({
-            userAddress: msg.sender,
-            data: eVote,
-            metadata: checkedMetadataValue,
-            isValid: false
-        });
-        voteData[surveyId].push(_voteData);
+        voteData[surveyId].push(
+            VoteData({ userAddress: msg.sender, data: eVote, metadata: checkedMetadataValue, isValid: false })
+        );
 
         // Add user to the hasvoted list
         hasVoted[surveyId][msg.sender] = true;
@@ -373,9 +369,9 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // In case of the last iteration - Potentially reveal the value
         if (queryData[queryId].cursor >= voteData[surveyId].length) {
             // Check the threshold of data and also the opposite one!
-            euint256 thresholdDown = TFHE.asEuint256(_surveyParams[surveyId].minResponseThreshold);
+            euint256 thresholdDown = TFHE.asEuint256(_surveyParams[surveyId].minResponseThreshold - 1);
             euint256 thresholdUp = TFHE.asEuint256(
-                _surveyData[surveyId].currentParticipants - _surveyParams[surveyId].minResponseThreshold
+                _surveyData[surveyId].currentParticipants - _surveyParams[surveyId].minResponseThreshold + 1
             );
 
             ebool reachedThreshold = TFHE.and(

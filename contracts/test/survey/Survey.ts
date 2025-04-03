@@ -90,7 +90,6 @@ const invalidSurveyParamsTestCases = [
     params: { minResponseThreshold: 0 },
     error: "InvalidSurveyParameter",
   },
-  // Add more test cases as needed
 ];
 
 const analyseScenarioTestCases = [
@@ -120,6 +119,7 @@ const analyseScenarioTestCases = [
             value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [50]),
           },
         ],
+        [],
       ],
       expectToBeValid: true,
       finalResultCount: 4,
@@ -152,14 +152,12 @@ const analyseScenarioTestCases = [
             value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [55]),
           },
         ],
+        [],
       ],
       expectToBeValid: false,
     },
   },
 ];
-
-// Test case scenario to add
-// TODO: Add verification case on the user metadata on constraint
 
 describe("Survey", function () {
   // We are using snapshot allowing us to reset the environment from executing test
@@ -416,17 +414,15 @@ describe("Survey", function () {
       surveyMetadataType: surveyMetadataType,
       userMetadata: [10000, true], // Invalid age entry
     });
+    await awaitAllDecryptionResults();
 
     // Both user should have voted
     expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.true;
     expect(await this.survey.hasVoted(0, this.signers.bob.address)).to.be.true;
 
-    await awaitAllDecryptionResults(); // Wait the gateway proceed the entry verification
-
-    // // Verify the vote validity
-    // expect(await this.survey.voteData(0).length).to.be.equals(2);
-
-    // expect(await this.survey.hasVoted(0, this.signers.bob.address)).to.be.true;
+    // Verify the vote validity
+    expect((await this.survey.voteData(0, 0)).isValid).to.be.true; // Alice
+    expect((await this.survey.voteData(0, 1)).isValid).to.be.false; // Bob
   });
 
   analyseScenarioTestCases.forEach(({ name, params }) => {
@@ -466,7 +462,7 @@ describe("Survey", function () {
       // Create and execute the query
       await this.survey.createQuery(0, params.filters);
       await this.survey["executeQuery(uint256)"](0);
-      await awaitAllDecryptionResults(); // Wait for the gateway
+      await awaitAllDecryptionResults();
 
       // Read the result
       const queryData = await this.survey.queryData(0);
