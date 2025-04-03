@@ -32,46 +32,80 @@ By leveraging Zama’s FHEVM, PrivatePolls enables:
 
 - Encrypted submissions: Respondents submit data that remains cryptographically sealed, even during computation.
 
-- Threshold-based insights: Aggregate results (sums, averages) are revealed only when predefined privacy thresholds (e.g., 50+ participants) are met, preventing individual data leaks.
+- Threshold-based insights: Aggregate results are revealed only when predefined privacy thresholds (e.g., 50+ participants) are met, preventing individual data leaks.
 
 - Role-based access: Organizers define survey parameters, analysts pay to query encrypted datasets, and participants retain full ownership of their sensitive inputs.
 
-- Built for blockchain-native governance, salary transparency, and healthcare surveys, PrivatePolls replaces fragile trust models with mathematically enforced privacy. Whether comparing R&D budgets or gauging community sentiment, insights are generated—not extracted—from encrypted data, setting a new standard for ethical data collaboration.
-
-> No plaintexts. No leaks. Just truth.
-
-## Use cases
-
-### 1. On-chain opinion pool
-
-- Example: "Should DAO X invest in AI startups?"
-- Privacy: Demographic filters (age ≥45, EU residents) without exposing individual votes
-
-### 2. On-chain benchmarking
-
-- Example: Encrypted R&D budget comparisons
-- Output: "Your spending is 18% above sector average"
+- Built for blockchain-native governance, salary transparency, and healthcare surveys. PrivatePolls replaces fragile trust models with mathematically enforced privacy.
 
 ## Design architecture
 
-# Protocol Documentation
+Our protocol uses a single smart contract to manage both private polling and benchmarking. This design is mainly motivated by a business perspective allowing us to manage more easily reward mechanisms for the participants. See more in business opportunity section. However, this does not impact the logic of the polling/benchmark as in both cases, we are going to count the number of entries and the total sum of the votes, allowing us to do the average or the mean depending of the type of entry we are requested.
 
-Our protocol uses a single contract to manage both private polling and benchmarking. This design is mainly motivated by a business perspective allowing us to manage more easily reward mechanisms for the participants. See more in the accoring section (#TODO:)
+PrivatePolls can be decomposed in two phases. The voting time and the analyse. During the voting time, users can submit new entry to the survey. Once the vote is finished, and we have enough participants according to the threshold parameter, the survey result is decrypted. Then the analyse phase is unlock allowing anyone one to request new analyse on the metadata.
 
-At initial, we wanted to add the possibility to reveal partially the results. Let's say you have already 50 participants, you may want to have a current view of the polling result. This approach works pretty well, however the composition with the pending analysis and edge cases complexify a lot the implementation, leading to potential leaks. We decided, for a first version, to allow a reveal operation when a survey is done. Meaning in a whitelisted mechanism all the participants have voted or the end time is reach.
-
-> Notice that in that case the polling will have a end date.
-
-## Create a new polling/benchmark
-
-We defined by a survey the polling or benchmark process we are doing on some data. Notice that those two are handle in the same way as one will be a substraction to obtain the polling result while the other will be an average in the case of the benchmark. The protocol will returned two data, the total sum of the data (in the case of a vote 0/1 or the value in the benchmark) and the total number of participants.
+## Create a new survey
 
 When defining a new survey, the organizer will be in charge of multiple parameters.
 
-- The threshold used for the data, allowing us to know how many participants we need at the minimum to reveal the vote or the analysis.
-  Also, he will be in charge to defined what kind of metadata he wants to set.
+To create a new survey, you can call the `createSurvey` function from the solidity smart contract. We expect to have the following data in the parameter:
 
-Consideration:
+```solidity
+struct SurveyParams {
+    string surveyPrompt;            // The survey question
+    SurveyType surveyType;          // The type of survey (POLLING, BENCHMARK)
+    bool isWhitelisted;             // Indicates if the survey is restricted to a whitelisted users
+    bytes32 whitelistRootHash;      // Merkle root hash for allowlist verification (if restricted)
+    uint256 surveyEndTime;          // UNIX timestamp when survey closes
+    uint256 minResponseThreshold;   // Minimum number of responses required before analysis/reveal
+    MetadataType[] metadataTypes;   // List of metadata requirements from participants
+    Filter[][] constraints;         // Constraints defining a valid metadata
+}
+```
+
+Notice, that the `whitelistRootHash` is optional depending if you want to have a whitelisted mechanism defined by the `isWhitelisted` variable. (Learn more on how to defined this parameter in the "Whitelist mechanism" section)
+
+When creating a new survey, we expect to have a threshold defined, allowing us to know on how many data we need to have in order to validate the survey and to do analyses afterward.
+
+Finally, you can defined a list of metadata types allowing you to collect those encrypted informtation from the user. You have also the possibility to include some constraint on it, depending on the data you want to collect.
+
+Notice that even if we are providing tools for encrypted survey, you may need to still have consideration on privacy preserving system.
+
+//FIXME: Even if we are providing tools allowing user to defined a good private preserving survey, it will be responsible on the data and constraint definition.
+
+```typescript
+// Example in typescript
+
+const surveyParams = {
+  surveyPrompt: "Are you in favor of privacy?",
+  surveyType: SurveyType.POLLING,
+  isWhitelisted: false,
+  whitelistRootHash: new Uint8Array(32),
+  surveyEndTime: Math.floor(Date.now() / 1000),
+  minResponseThreshold: 4,
+  metadataTypes: [MetadataType.UINT256, MetadataType.BOOLEAN], // [Age, Gender]
+  constraints: [
+    // Age constraint
+    [
+      {
+        verifier: FilterOperator.LargerThan,
+        value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [10]),
+      },
+      {
+        verifier: FilterOperator.SmallerThan,
+        value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [110]),
+      },
+    ],
+    // Gender constraint
+    [],
+  ],
+};
+
+const transaction = await this.survey.createSurvey(surveyParams);
+await transaction.wait();
+```
+
+### Privacy consideration
 
 - What would be a good threshold?
 
@@ -81,9 +115,12 @@ Consideration:
 
 // TODO:: Add the possibility to add contraint, allowing us to validate or not the user metadata. Notice, that it is the responsability to determined the metadata limit.
 // For instance, we expect for the age a value between 0 and 110. However, if a choice of 20-30, can restraint the vote, and directly target user privacy.
-// We are providing the tools for efficient pravacy, however the survey design need to be though beforehand avoiding unexpected reveal.
 
-#### Sub group distinction
+#### Threshold parameter
+
+todo
+
+#### Metadata choice
 
 When defining the metadata, we need to take into consideration the group we are going to analyse. For instance, if we are reliyng on some distinct attribute, it can potentially leaks the vote data, as we could potentially guess the value.
 
@@ -96,7 +133,11 @@ However, the opposite is also true, meaning that if I request the vote bellow 60
 I will get all the votes. Then I can simply compare the polling result with the one
 obtain. Which will leak the current user!
 
-### Metadata
+### Metadata customization
+
+By our approach, we can add any kind of metadata and filter of operation.
+
+On the operation side, we are expected to have a bytes, meaning that the decryption can be done as we want.
 
 However, the multiple choice can complexify it.
 By allowing the user this time to select multiple value.
@@ -113,29 +154,6 @@ In our protocol, we also allow the possibility to create a whitelist mechanism.
 Polling and Benchmark can be subject to whitelisted mechanism. To handle it, our protocol will store the root hash of the Merkle Tree. When a user want to submit an entry, he will need to provide the proving path of the Merkle Tree to validate it.
 
 A survey can also be whitelisted. To limit the on-chain computation, we are relying on the Merkle-Tree from the OpenZeppelin package (https://github.com/OpenZeppelin/merkle-tree)
-
-### Create a new polling/benchmark
-
-In our protocol, we are handling in the same way the polling and the benchmark.
-
-```solidity
-struct SurveyParams {
-    string surveyPrompt;            // The survey question
-    SurveyType surveyType;          // The type of survey (POLLING, BENCHMARK)
-    bool isWhitelisted;             // Indicates if the survey is restricted to a whitelisted users
-    bytes32 whitelistRootHash;      // Merkle root hash for allowlist verification (if restricted)
-    uint256 numberOfParticipants;   // Number of participant
-    uint256 surveyEndTime;          // UNIX timestamp when survey closes
-    uint256 minResponseThreshold;   // Minimum number of responses required before analysis/reveal
-    MetadataType[] metadataTypes;   // List of metadata requirements from participants
-}
-```
-
-Regarding the `metadataTypes` we will need to defined the type for each metadata we want to collect
-
-<!-- FIXME: maybe add metadata constraint? -->
-
-> TODO: Show an example of a fixed `SurveyParams` used in typescript
 
 ### Reveal data
 
@@ -171,18 +189,12 @@ To handle this logic, we need to have a double verification. First we need the g
 
 => Participant number equals 0
 
-## UI Aspect
-
-On the first section, we need to see the user vote, to let them know how they can do it, while providing metadata.
-For example, on the salary, I want to have an idea of the sector, maybe the age...
-This need to be submitted while voting.
-
 ## Business opportunity
 
 An analyst will be interesting to have a view on the data as it is king.
 In order to get it, he will be in charge to pay an additional fees to remunerate the other who has share they private data.
 
-# Business aspect
+# Business Opportunity
 
 And another one could be add the possibility to "sell" the request.
 Indeed, executing over all the date are kind of costly. Thus, it represents
@@ -265,3 +277,7 @@ When we create a query, we are storing when we can reveal it on the expected num
 # Graph section
 
 // TODO: To optimize the verification process query verificaiton
+
+> Subnotes
+
+At initial, we wanted to add the possibility to reveal partially the results. Let's say you have already 50 participants, you may want to have a current view of the polling result. This approach works pretty well, however the composition with the pending analysis and edge cases complexify a lot the implementation, leading to potential leaks. We decided, for a first version, to allow a reveal operation when a survey is done. Meaning in a whitelisted mechanism all the participants have voted or the end time is reach.

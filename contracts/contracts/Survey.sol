@@ -9,7 +9,8 @@ import { SepoliaZamaGatewayConfig } from "fhevm/config/ZamaGatewayConfig.sol";
 
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { MetadataVerifier, MetadataType, Filter } from "./interfaces/IFilters.sol";
+import { Filter, MetadataType } from "./interfaces/IFilter.sol";
+import { MetadataVerifier } from "./MetadataVerifier.sol";
 
 import { ISurvey, SurveyParams, SurveyData, VoteData } from "./interfaces/ISurvey.sol";
 import { IAnalyze, QueryData } from "./interfaces/IAnalyze.sol";
@@ -31,7 +32,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     mapping(uint256 surveyId => SurveyParams) _surveyParams;
     mapping(uint256 surveyId => SurveyData) _surveyData;
 
-    mapping(uint256 surveyId => VoteData[]) voteData;
+    mapping(uint256 surveyId => VoteData[]) public voteData;
     mapping(uint256 surveyId => mapping(address userAddress => bool)) public hasVoted;
 
     uint256 private _queryIds;
@@ -147,18 +148,20 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         }
 
         // Check metadata type
-        uint256[] memory checkedMetadatValue = new uint256[](_surveyParams[surveyId].metadataTypes.length);
+        uint256[] memory checkedMetadataValue = new uint256[](_surveyParams[surveyId].metadataTypes.length);
         for (uint256 i = 0; i < _surveyParams[surveyId].metadataTypes.length; i++) {
             MetadataType _type = _surveyParams[surveyId].metadataTypes[i];
 
             if (_type == MetadataType.BOOLEAN) {
                 ebool val = TFHE.asEbool(metadata[i], inputProof);
-                checkedMetadatValue[i] = ebool.unwrap(val);
+                checkedMetadataValue[i] = ebool.unwrap(val);
                 TFHE.allowThis(val);
+                TFHE.allow(val, address(_verifier));
             } else if (_type == MetadataType.UINT256) {
                 euint256 val = TFHE.asEuint256(metadata[i], inputProof);
-                checkedMetadatValue[i] = euint256.unwrap(val);
+                checkedMetadataValue[i] = euint256.unwrap(val);
                 TFHE.allowThis(val);
+                TFHE.allow(val, address(_verifier));
             }
         }
 
@@ -169,7 +172,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         VoteData memory _voteData = VoteData({
             userAddress: msg.sender,
             data: eVote,
-            metadata: checkedMetadatValue,
+            metadata: checkedMetadataValue,
             isValid: false
         });
         voteData[surveyId].push(_voteData);
@@ -185,9 +188,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             ebool isValid = _verifier.applyFilterOnMetadata(
                 _surveyParams[surveyId].constraints,
                 _surveyParams[surveyId].metadataTypes,
-                checkedMetadatValue
+                checkedMetadataValue
             );
-            TFHE.allowThis(isValid);
 
             // Call the Gateway to verify the user metadata
             uint256[] memory cts = new uint256[](1);

@@ -4,35 +4,14 @@ pragma solidity ^0.8.24;
 import "fhevm/lib/TFHE.sol";
 import "fhevm/gateway/GatewayCaller.sol";
 
-/// @notice List of all types managed.
-enum MetadataType {
-    BOOLEAN,
-    UINT256
-}
+import { SepoliaZamaFHEVMConfig } from "fhevm/config/ZamaFHEVMConfig.sol";
 
-/// @notice List of operators available.
-/// @dev When adding a new operator, you will have to add the expected mapping with the type
-///      and the expected behaviour to have when the filter operation is applied.
-enum FilterOperator {
-    LargerThan,
-    SmallerThan,
-    EqualTo,
-    DifferentTo
-}
-
-/// @notice Filter that can be applied on an encrypted metadata.
-/// @dev On the filter, we can customize it as we want, as we could have any kind of arguments
-/// stored with bytes. However, this customization required us to decode the arguments, which
-/// can lead to an additional costs for the request.
-struct Filter {
-    FilterOperator verifier;
-    bytes value;
-}
+import { Filter, MetadataType, FilterOperator } from "./interfaces/IFilter.sol";
 
 /// @title Metadata Verifier
 /// Apply filtering operation on encrypted metadata.
 /// Notice that all the metadata are encrypted and, at no point, we can decypher them.
-contract MetadataVerifier {
+contract MetadataVerifier is SepoliaZamaFHEVMConfig {
     error InvalidFilterParameter();
     error UnmanagedType();
     error UnmanagedOperator();
@@ -140,6 +119,7 @@ contract MetadataVerifier {
             }
         }
 
+        TFHE.allow(isValid, msg.sender);
         return isValid;
     }
 }

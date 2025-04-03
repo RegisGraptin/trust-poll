@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "fhevm/lib/TFHE.sol";
 import "fhevm/gateway/GatewayCaller.sol";
 
-import { MetadataType, Filter } from "./IFilters.sol";
+import { MetadataType, Filter } from "./IFilter.sol";
 
 enum SurveyType {
     POLLING,

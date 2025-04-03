@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "fhevm/lib/TFHE.sol";
 import "fhevm/gateway/GatewayCaller.sol";
 
-import { Filter } from "./IFilters.sol";
+import { Filter } from "./IFilter.sol";
 
 struct QueryData {
     uint256 surveyId; // Survey we are analysis

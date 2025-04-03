@@ -49,6 +49,13 @@ enum MetadataType {
   UINT256 = 1,
 }
 
+enum FilterOperator {
+  LargerThan = 0,
+  SmallerThan = 1,
+  EqualTo = 2,
+  DifferentTo = 3,
+}
+
 const SURVEY_END_TIME = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
 
 const validSurveyParam: SurveyParamsStruct = {
@@ -189,9 +196,7 @@ describe("Survey", function () {
               break;
 
             default:
-              // FIXME:
-              console.log("error");
-              break;
+              throw TypeError(`Unknonw ${metadataType}`);
           }
         }
       }
@@ -348,6 +353,80 @@ describe("Survey", function () {
     expect(surveyDataAfterVoting.isValid).to.be.true;
     expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
     expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
+  });
+
+  it("should create a new survey with constraint metadata", async function () {
+    const surveyMetadataType = [MetadataType.UINT256, MetadataType.BOOLEAN];
+    const surveyParams = {
+      ...validSurveyParam,
+      metadataTypes: surveyMetadataType, // [Age, Gender]
+      constraints: [
+        // Age constraint
+        [
+          {
+            verifier: FilterOperator.LargerThan,
+            value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [10]),
+          },
+          {
+            verifier: FilterOperator.SmallerThan,
+            value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [110]),
+          },
+        ],
+        // Gender constraint
+        [],
+      ],
+    };
+    const transaction = await this.survey.createSurvey(surveyParams);
+    await transaction.wait();
+
+    // Check the survey information at the index 0
+    const surveyData = await this.survey.surveyParams(0);
+
+    expect(surveyData.surveyPrompt).to.be.equals("Are you in favor of privacy?");
+    expect(surveyData.isWhitelisted).to.be.false;
+    expect(surveyData.surveyEndTime).to.be.equals(SURVEY_END_TIME);
+    expect(surveyData.minResponseThreshold).to.be.equals(4);
+
+    expect(surveyData.constraints.length).to.be.equals(2);
+    expect(surveyData.constraints[0].length).to.be.equals(2);
+    expect(surveyData.constraints[1].length).to.be.equals(0);
+
+    let largerConstraint = surveyData.constraints[0][0];
+    expect(largerConstraint[0]).to.be.equals(FilterOperator.LargerThan);
+    expect(ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], largerConstraint[1])[0]).to.be.equals(10n);
+
+    let smallerConstraint = surveyData.constraints[0][1];
+    expect(smallerConstraint[0]).to.be.equals(FilterOperator.SmallerThan);
+    expect(ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], smallerConstraint[1])[0]).to.be.equals(110n);
+
+    // Add a valid entry
+    await this.submitPollingEntry({
+      signer: this.signers.alice,
+      surveyId: 0,
+      entry: true,
+      surveyMetadataType: surveyMetadataType,
+      userMetadata: [50, true],
+    });
+
+    // Add an invalid one
+    await this.submitPollingEntry({
+      signer: this.signers.bob,
+      surveyId: 0,
+      entry: true,
+      surveyMetadataType: surveyMetadataType,
+      userMetadata: [10000, true], // Invalid age entry
+    });
+
+    // Both user should have voted
+    expect(await this.survey.hasVoted(0, this.signers.alice.address)).to.be.true;
+    expect(await this.survey.hasVoted(0, this.signers.bob.address)).to.be.true;
+
+    await awaitAllDecryptionResults(); // Wait the gateway proceed the entry verification
+
+    // // Verify the vote validity
+    // expect(await this.survey.voteData(0).length).to.be.equals(2);
+
+    // expect(await this.survey.hasVoted(0, this.signers.bob.address)).to.be.true;
   });
 
   analyseScenarioTestCases.forEach(({ name, params }) => {
