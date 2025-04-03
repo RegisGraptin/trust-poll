@@ -151,6 +151,9 @@ const analyseScenarioTestCases = [
   },
 ];
 
+// Test case scenario to add
+// TODO: Add verification case on the user metadata on constraint
+
 describe("Survey", function () {
   // We are using snapshot allowing us to reset the environment from executing test
   let snapshotId: string;
@@ -232,8 +235,12 @@ describe("Survey", function () {
 
     this.revealSurveyResult = async (surveyId: number): Promise<SurveyDataStruct> => {
       // Fetch the survey end time
+      const gatewayDelay = 100n;
       const surveyData = await this.survey.surveyParams(surveyId);
-      await time.setNextBlockTimestamp(surveyData.surveyEndTime);
+      await time.setNextBlockTimestamp(surveyData.surveyEndTime + gatewayDelay);
+
+      // FIXME: we now have to take into consideration the gateway delay
+      // Which should maybe be avoid?
 
       // Reveal the votes
       await this.survey.revealResults(surveyId);

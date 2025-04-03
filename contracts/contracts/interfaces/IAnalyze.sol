@@ -6,16 +6,6 @@ import "fhevm/gateway/GatewayCaller.sol";
 
 import { Filter } from "./IFilters.sol";
 
-// TODO: DOC + clean
-
-// FIXME: Should we apply a mapping on the type and the acceptable filter?
-
-// FIXME: we need to have an encrypted value which bring some qustion
-
-// TODO: Do we want the query created by someone public?
-// We could push the encryption boundaries further, by encrypting the query too
-// Or we want transparency on the user data requested?
-
 struct QueryData {
     uint256 surveyId; // Survey we are analysis
     Filter[][] filters; // Filters apply on each metadata, acts as a AND operation
@@ -29,15 +19,12 @@ struct QueryData {
     uint256 finalResult;
 }
 
-// 1. Create/Register a new analyse
-// 2. Iterate over it
-// 2.a Before revealing the data, double check if not sensible
-// 3. Reveal the result or not
-
-// Simple int
-// Polling yes/no -> yes vote
-// Benchmark -> avg metric
-
+/// IAnalyse interface.
+/// Analyse workflow:
+/// 1. Create/Register a new analyse
+/// 2. Iterate over it
+/// 3. Before revealing, verify we have reached the expected threshold
+/// 4. Reveal or not the result
 interface IAnalyze {
     error UnauthorizePendingQuery();
     error InvalidQueryId();
@@ -46,6 +33,8 @@ interface IAnalyze {
 
     event QueryCreated(uint256 indexed queryId, uint256 indexed surveyId, address analyser);
 
+    /// @notice In case of "invalid" query, meaning we have not reach the expected
+    /// threshold number, the `finalSelectedCount` should be equal to 0.
     event QueryCompleted(
         uint256 indexed queryId,
         uint256 indexed surveyId,
@@ -54,13 +43,24 @@ interface IAnalyze {
         uint256 finalResult
     );
 
-    // event QueryCompleted(uint256 indexed queryId, uint256 indexed surveyId, address analyser);
-
+    /// @notice Create a new analysis.
+    /// @param surveyId Survey we want to analyse.
+    /// @param params Filters we want to applied on the user metadata.
+    /// @return queryId The id of the query created.
     function createQuery(uint256 surveyId, Filter[][] memory params) external returns (uint256);
 
+    /// @notice Iterate over the query
+    /// @dev Helper with a limit of 10.
+    /// @param queryId Query we want to execute.
     function executeQuery(uint256 queryId) external;
 
+    /// @notice Iterate over the query
+    /// @param queryId Query we want to execute.
+    /// @param limit Number of item we want to iterate.
     function executeQuery(uint256 queryId, uint256 limit) external;
 
+    /// @notice Get the data of the query
+    /// @param queryId Id of the query.
+    /// @return QueryData Data of the query.
     function getQueryData(uint256 queryId) external view returns (QueryData memory);
 }

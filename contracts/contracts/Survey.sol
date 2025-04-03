@@ -41,7 +41,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     mapping(uint256 requestId => uint256 surveyId) gatewayRequestIdToSurveyId;
     mapping(uint256 requestId => GatewayUserEntry) gatewayRequestIdToConfirmUserEntry;
 
-    /// @notice TODO: update naming
+    /// @notice Verifier used for the metadata filtering and validation
     MetadataVerifier _verifier;
 
     constructor() {
@@ -115,6 +115,12 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         emit ConfirmUserEntry(surveyId, voteData[surveyId][voteId].userAddress, true);
     }
 
+    function _checkSurveyValidity(uint256 surveyId) internal view {
+        if (surveyId >= _surveyIds) revert InvalidSurveyId();
+        if (block.timestamp >= _surveyParams[surveyId].surveyEndTime) revert FinishedSurvey();
+        if (hasVoted[surveyId][msg.sender]) revert UserAlreadyVoted();
+    }
+
     // Entry vote + verification
     // Gateway confirmed vote - we also store a boolean to indicate if the vote is valid or not
     // Can finally incentivize result when good one
@@ -128,19 +134,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         bytes calldata inputProof,
         bytes32[] memory whitelistProof
     ) internal {
-        // TODO: see how can I simplify the complexity of this function?
-
-        if (surveyId >= _surveyIds) {
-            revert InvalidSurveyId();
-        }
-
-        if (block.timestamp >= _surveyParams[surveyId].surveyEndTime) {
-            revert FinishedSurvey();
-        }
-
-        if (hasVoted[surveyId][msg.sender]) {
-            revert UserAlreadyVoted();
-        }
+        _checkSurveyValidity(surveyId);
 
         if (_surveyParams[surveyId].metadataTypes.length != metadata.length) {
             revert InvalidUserMetadata();
@@ -154,9 +148,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             }
         }
 
-        // TODO: Move this logic in the modifer?
         // Check metadata type
-        // TODO: Internal function as we need to check if it is valid?
         uint256[] memory checkedMetadatValue = new uint256[](_surveyParams[surveyId].metadataTypes.length);
         for (uint256 i = 0; i < _surveyParams[surveyId].metadataTypes.length; i++) {
             MetadataType _type = _surveyParams[surveyId].metadataTypes[i];
@@ -191,7 +183,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         emit EntrySubmitted(surveyId, msg.sender);
 
         // Verification of the user metadata
-        // TODO: add more test here
         if (_surveyParams[surveyId].constraints.length > 0) {
             ebool isValid = _verifier.applyFilterOnMetadata(
                 _surveyParams[surveyId].constraints,
@@ -245,8 +236,8 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             revert InvalidSurveyId();
         }
 
-        // Need the survey to be finished
-        // TODO: Do we need to place a cooldown too?
+        // Survey must be finished
+        // Wait for the verification on the encrypted entries
         if (block.timestamp < _surveyParams[surveyId].surveyEndTime + MAX_GATEWAY_DELAY) {
             revert UnfinishedSurvey();
         }
@@ -340,8 +331,6 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
             revert AlreadyCompletedQuery();
         }
 
-        // TODO: Other things in mind??
-
         uint256 surveyId = queryData[queryId].surveyId;
         uint256 start = queryData[queryId].cursor;
 
@@ -423,7 +412,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     }
 
     function executeQuery(uint256 queryId) external {
-        return executeQuery(queryId, 10);
+        executeQuery(queryId, 10);
     }
 
     //////////////////////////////////////////////////////////////////
@@ -454,8 +443,7 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
     /// can request to decrypt the encrypted verification parameter allowing us to confirm or not
     /// the user entry for the given survey.
     function gatewayConfirmUserEntry(uint256 requestId, bool isValid) public onlyGateway {
-        // FIXME: double check the calldata ?? Input ?
-        GatewayUserEntry storage _gatewayUserEntry = gatewayRequestIdToConfirmUserEntry[requestId];
+        GatewayUserEntry memory _gatewayUserEntry = gatewayRequestIdToConfirmUserEntry[requestId];
 
         uint256 surveyId = _gatewayUserEntry.surveyId;
         uint256 voteId = _gatewayUserEntry.voteId;

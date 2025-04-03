@@ -200,6 +200,10 @@ TOken allocation to contributed users? Need to brainstorm about it!
 > Possibiltiy to create theshold area allowing decryption/reveal of the data from the vote or the analysis
 > ==> BUT this leads to a potential single point of failure where we do not have enough participants it locks the smart contract. As we will not be able to decypher it without revealing the user vote.
 
+TODO: Possibility to have encrypted query
+// We could push the encryption boundaries further, by encrypting the query too
+// Or we want transparency on the user data requested?
+
 ## Roadmap
 
 - [] At the moment we do not handle complex polling data. Meaning that we only have two choice at the moment (true/false). An improvment could be to add other possibilities allowing more customization. Also, another level of improvment will be to manage multiple user choice. But thought those features, we will need to reconsider the design as it is polling feature and not a benchark one.

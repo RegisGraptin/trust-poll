@@ -4,8 +4,6 @@ pragma solidity ^0.8.24;
 import "fhevm/lib/TFHE.sol";
 import "fhevm/gateway/GatewayCaller.sol";
 
-// TODO: update naming + DOC + Test
-
 /// @notice List of all types managed.
 enum MetadataType {
     BOOLEAN,
@@ -18,10 +16,14 @@ enum MetadataType {
 enum FilterOperator {
     LargerThan,
     SmallerThan,
-    EqualTo
+    EqualTo,
+    DifferentTo
 }
 
 /// @notice Filter that can be applied on an encrypted metadata.
+/// @dev On the filter, we can customize it as we want, as we could have any kind of arguments
+/// stored with bytes. However, this customization required us to decode the arguments, which
+/// can lead to an additional costs for the request.
 struct Filter {
     FilterOperator verifier;
     bytes value;
@@ -43,9 +45,11 @@ contract MetadataVerifier {
         isOperationAllowed[MetadataType.UINT256][FilterOperator.LargerThan] = true;
         isOperationAllowed[MetadataType.UINT256][FilterOperator.SmallerThan] = true;
         isOperationAllowed[MetadataType.UINT256][FilterOperator.EqualTo] = true;
+        isOperationAllowed[MetadataType.UINT256][FilterOperator.DifferentTo] = true;
 
         // BOOLEAN only supports equality checks
         isOperationAllowed[MetadataType.BOOLEAN][FilterOperator.EqualTo] = true;
+        isOperationAllowed[MetadataType.BOOLEAN][FilterOperator.DifferentTo] = true;
     }
 
     /// @notice Verify we can applied the input filters on the metadata.
@@ -62,45 +66,58 @@ contract MetadataVerifier {
         }
     }
 
-    /// @notice Apply a filter on a metadata.
-    /// @param filter Filter we want to applied.
-    /// @param userData User metadata.
-    /// @return isValid Returns an encrypted true value when the user metadata matches the input filter.
-    function _applyFilter(Filter memory filter, MetadataType metadataType, uint256 userData) internal returns (ebool) {
-        // FIXME: need types here, as can be bool or euint256 not the same operation
-
+    function _applyBooleanFilter(Filter memory filter, uint256 userData) internal returns (ebool) {
         ebool isVerified;
-
         FilterOperator _filterOperator = filter.verifier;
 
-        // FIXME: not sure we can have "dynamic" types in solidity
+        ebool eVal = TFHE.asEbool(abi.decode(filter.value, (bool)));
+        ebool eUsr = ebool.wrap(userData);
 
-        // Decode the value using the type
-        if (metadataType == MetadataType.BOOLEAN) {
-            // TODO:
-        } else if (metadataType == MetadataType.UINT256) {
-            // TODO:
-        } else {
-            revert UnmanagedType();
-        }
-
-        // TODO: Depending of th number of data, we can have a huge cost here
-        // by doing abi.decode() and asEuint256 operation.
-        // Need to think a smarter approach, maybe?
-
-        if (_filterOperator == FilterOperator.LargerThan) {
-            euint256 eVal = TFHE.asEuint256(abi.decode(filter.value, (uint256)));
-            euint256 eUsr = euint256.wrap(userData);
-            isVerified = TFHE.gt(eUsr, eVal);
-        } else if (_filterOperator == FilterOperator.SmallerThan) {
-            euint256 eVal = TFHE.asEuint256(abi.decode(filter.value, (uint256)));
-            euint256 eUsr = euint256.wrap(userData);
-            isVerified = TFHE.lt(eUsr, eVal);
+        if (_filterOperator == FilterOperator.EqualTo) {
+            isVerified = TFHE.and(eUsr, eVal);
+        } else if (_filterOperator == FilterOperator.DifferentTo) {
+            isVerified = TFHE.xor(eUsr, eVal);
         } else {
             revert UnmanagedOperator();
         }
 
         return isVerified;
+    }
+
+    function _applyUint256Filter(Filter memory filter, uint256 userData) internal returns (ebool) {
+        ebool isVerified;
+        FilterOperator _filterOperator = filter.verifier;
+
+        euint256 eVal = TFHE.asEuint256(abi.decode(filter.value, (uint256)));
+        euint256 eUsr = euint256.wrap(userData);
+
+        if (_filterOperator == FilterOperator.LargerThan) {
+            isVerified = TFHE.gt(eUsr, eVal);
+        } else if (_filterOperator == FilterOperator.SmallerThan) {
+            isVerified = TFHE.lt(eUsr, eVal);
+        } else if (_filterOperator == FilterOperator.EqualTo) {
+            isVerified = TFHE.eq(eUsr, eVal);
+        } else if (_filterOperator == FilterOperator.DifferentTo) {
+            isVerified = TFHE.ne(eUsr, eVal);
+        } else {
+            revert UnmanagedOperator();
+        }
+
+        return isVerified;
+    }
+
+    /// @notice Apply a filter on a metadata.
+    /// @param filter Filter we want to applied.
+    /// @param userData User metadata.
+    /// @return isValid Returns an encrypted true value when the user metadata matches the input filter.
+    function _applyFilter(Filter memory filter, MetadataType metadataType, uint256 userData) internal returns (ebool) {
+        if (metadataType == MetadataType.BOOLEAN) {
+            return _applyBooleanFilter(filter, userData);
+        } else if (metadataType == MetadataType.UINT256) {
+            return _applyUint256Filter(filter, userData);
+        } else {
+            revert UnmanagedType();
+        }
     }
 
     /// @notice Apply a list of filters on the metadata
