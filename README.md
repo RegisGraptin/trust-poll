@@ -164,37 +164,67 @@ for (const [i, v] of tree.entries()) {
 
 ### Reveal data
 
-To reveal the data, the survey has to be terminated, meaning that we have reach the end time from it or in the case of a whitelisted one, all the participants have sumbitted an entry.
+To reveal the data, the survey has to be terminated, meaning that we have reach the end time from it or in the case of a whitelisted one, all the participants have sumbitted an entry. Note that, in the case you have defined metadata constraints, you might have to wait an additional delay allowing the Gateway to confirm or not the input user metdata.
 
-<!-- TODO: display typescritp code on how to use it -->
+To reveal it, you can simply call the solidity `revealResults` function with the id of the survey you want to reveal. Or simply:
+
+```TypeScript
+const surveyId = 42;
+await this.survey.revealResults(surveyId);
+```
+
+Notice that the result will be revealed only if we ave reached the minimal expected threshold. Else, the survey will be consided as invalid. Again, the result might not be reveal directly as we need the Gateway to process it.
 
 ## Analyse the data
 
-## Query
+Once a survey is completed and valid, analyst have the possibility to create custom requests to better understand the data. For that, they will first need to create a query and execute it.
 
-When doing an analyse the query parameter are past in public, meaning that all people can see the user query.
+When creating a query, analyst needs to defined public filters that will be used on the encrypted entries. Note that at the moment, the filters are public, but it could be intersting to maybe think about private filters, allowing maybe business opportunities to sell the result of the query or to keep competitive advantages on the query analysed.
 
-Design choice of the customization with as much fitler possible
+On the design implementation, we have decided to focus on the customization, meaning that we do not have restriction on the query done. Thus, a analyst will have the possibiltiy to defined as much filters he wants for all the potential metadata. Although the query can be extremelly precise, it can be reveal only if we have reach the expected threshold.
 
-The analyst will have the possibiltiy to defined as much filters he wants for all the potential metadata. The customization can be relly precise. However the result will be only reveal if we have a matching threshold number.
-For instance, if the user want to know how much people have voted in favor of the survey where they live in France, have 30 years old, have one dog... It will only be reveal if we have at least 30 results.
+For instance, if the user want to know how much people have voted in favor of the survey where they live in France, have 30 years old, have one dog... It will only be reveal if we have at least 30 results. Notice that the opposite is also true. The negative version is also not valid, as it will show the opposite and can be reveal when comapring to the totla one.
 
-Notice that the opposit is also true. The negative version is also not valid, as it will show the opposite and can be reveal when comapring to the totla one.
+This desing approach have some restrictions. First, we do not propose aggregation limitation on the metadata filter. It could maybe be an interesting mechanism to protect users, but this can be adapt with a strong thrshold value.
+The second limitation will be on the execution cost. Indeed, by having any kind of metadata, we do not have a proper structure alowing us to optimize the execution cost, meaning that for a given query, we need to iterate over all the entries, which can be pretty gas intensive.
 
-> With full customization we are limited in the optimization structure we can proposed.
-> Limitation is the computation over all the data again and again.
+### Create a custom Query
 
-> - "Pre-computation of statistics: Aggregate data in batches to minimize expensive on-chain TFHE operations."
+To create a query, a analyst will have to wait the survey is completed and valid. Then, he can defined a list of filters for each metadata and call the smart contract to create it.
 
-### Validate a query
+```TypeScript
+// Metadata defined as [MetadataType.UINT256, MetadataType.BOOLEAN] stands for [age, gender]
+// Defined a filter to analyse polling result with an age greater than 55
+const filters = [
+  [
+    {
+      verifier: 0, // LargerThan
+      value: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [55]),
+    },
+  ],
+  [],
+]
 
-Once the query isfully executed over all the data, we need to verify that the data does not leak any information. This verification step is done by taking into account the number of selected votes. If we do not reached the expected threshold or if
+// Create a query by selecting the survey's ID and the filters we want to analyse
+await this.survey.createQuery(0, filters);
+```
 
-> Say that 0 -> threshold or max - threshold -> max
+### Execute the Query
 
-To handle this logic, we need to have a double verification. First we need the gateway to send a smart
+As mention before, we need to iterate over all the entries to preserve privacy. However, iterating over all may consume too much gas for a single transaction. To handle it, we can iterate it using batch mechanism. The idea is to use a cursor that is going to iterate over a small subset of the entries, reducing the gas needed for a transaction. However, though this mechanism, we may need to execute multiple transaction allowing us to iterate over all the entries.
 
-=> Participant number equals 0
+In our implementation, we propose two functions, doing exactly the same thing. One helper that is going to iterate over 10 entries, and another customizable.
+
+```TypeScript
+
+// Iterate over 10 entries given the surey ID 0
+await this.survey["executeQuery(uint256)"](0);
+
+// Iterate over 100 entries
+await this.survey["executeQuery(uint256,uint256)"](0, 100);
+```
+
+Once the query is fully executed over all the data, we need to verify that the data does not leak any information. This verification step is done by taking into account the number of selected votes. If we do not reached the expected threshold the query will be consider invalid. To have access to the result, we will need to wait the gateway process to decrypt the expected result.
 
 ## Business opportunity
 
