@@ -242,9 +242,6 @@ describe("Survey", function () {
       const surveyData = await this.survey.surveyParams(surveyId);
       await time.setNextBlockTimestamp(surveyData.surveyEndTime + gatewayDelay);
 
-      // FIXME: we now have to take into consideration the gateway delay
-      // Which should maybe be avoid?
-
       // Reveal the votes
       await this.survey.revealResults(surveyId);
 
@@ -458,7 +455,6 @@ describe("Survey", function () {
       expect(surveyDataAfterVoting.currentParticipants).to.be.equals(pollingVotes.length);
       expect(surveyDataAfterVoting.finalResult).to.be.equals(pollingVotes.filter(Boolean).length);
 
-      // TODO: automate in case more users? Dynamic cursor ;)
       // Create and execute the query
       await this.survey.createQuery(0, params.filters);
       await this.survey["executeQuery(uint256)"](0);

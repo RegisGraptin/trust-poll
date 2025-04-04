@@ -42,13 +42,11 @@ By leveraging Zama’s FHEVM, PrivatePolls enables:
 
 Our protocol uses a single smart contract to manage both private polling and benchmarking. This design is mainly motivated by a business perspective allowing us to manage more easily reward mechanisms for the participants. See more in business opportunity section. However, this does not impact the logic of the polling/benchmark as in both cases, we are going to count the number of entries and the total sum of the votes, allowing us to do the average or the mean depending of the type of entry we are requested.
 
-PrivatePolls can be decomposed in two phases. The voting time and the analyse. During the voting time, users can submit new entry to the survey. Once the vote is finished, and we have enough participants according to the threshold parameter, the survey result is decrypted. Then the analyse phase is unlock allowing anyone one to request new analyse on the metadata.
+PrivatePolls can be decomposed in two phases. The voting phase and the analyse one. During the voting time, users can submit new entry to the survey. Once the vote is finished, and we have enough participants according to the threshold parameter, the survey result is decrypted. Then the analyse phase is unlock allowing anyone one to request new analyse on the metadata.
 
 ## Create a new survey
 
-When defining a new survey, the organizer will be in charge of multiple parameters.
-
-To create a new survey, you can call the `createSurvey` function from the solidity smart contract. We expect to have the following data in the parameter:
+When creating a new survey, the organizer will be in charge of multiple parameters. To create a new one, you can call the `createSurvey` function from the solidity smart contract. We expect to have the following parameter defined.
 
 ```solidity
 struct SurveyParams {
@@ -67,13 +65,13 @@ Notice, that the `whitelistRootHash` is optional depending if you want to have a
 
 When creating a new survey, we expect to have a threshold defined, allowing us to know on how many data we need to have in order to validate the survey and to do analyses afterward.
 
-Finally, you can defined a list of metadata types allowing you to collect those encrypted informtation from the user. You have also the possibility to include some constraint on it, depending on the data you want to collect.
+Finally, you can defined a list of metadata types allowing you to collect those information encrypted from the user. You also have the possibility to include some constraints on it, depending on the data you want to collect.
 
-Notice that even if we are providing tools for encrypted survey, you may need to still have consideration on privacy preserving system.
+Finally, note that we are providing a tool to help you creating an encrypted survey. However, you still are responsible to include in your reflection privacy to avoid too much restricted contraints or even, a threshold too small based on your sample.
 
-//FIXME: Even if we are providing tools allowing user to defined a good private preserving survey, it will be responsible on the data and constraint definition.
+### TypeScript example
 
-```typescript
+```TypeScript
 // Example in typescript
 
 const surveyParams = {
@@ -107,53 +105,62 @@ await transaction.wait();
 
 ### Privacy consideration
 
-- What would be a good threshold?
+When designing a survey, two critical parameters must be considered to protect participants' privacy:
 
-> => Need to think of edge cases. If 2 but 3 participants, last one can be leaked!
-> We need more than 3 for the threshold and recomand more if possible
-> For the user also the same recommanded
+#### Threshold Parameter
 
-// TODO:: Add the possibility to add contraint, allowing us to validate or not the user metadata. Notice, that it is the responsability to determined the metadata limit.
-// For instance, we expect for the age a value between 0 and 110. However, if a choice of 20-30, can restraint the vote, and directly target user privacy.
+The threshold parameter defines the minimum number of participants required before a survey result can be disclosed. This is a critical parameter that should be adjust based on your population. We requiered at least 3 participants. However, we stronly recommand to increase it to improve the anonymization in your system.
 
-#### Threshold parameter
+Notice that in a non whitelisted mechanism, nothing disallow a malicious attacker to create multiple addresses and submit multiple entries. It can then impact the result of the survey. This can of behaviour can be eventually managed by providing a proof of humanity but will give a more restriction for voting.
 
-todo
+#### Metadata Constraints
 
-#### Metadata choice
+Metadata constraints define the parameters that validate or reject user-provided metadata to prevent invalid metadata parameter. It is the responsibility of the survey organizer to determine appropriate limits. Keep in mind that by having too much restricted constraints you may leak the voters as only a portion of them could be able to vote.
 
-When defining the metadata, we need to take into consideration the group we are going to analyse. For instance, if we are reliyng on some distinct attribute, it can potentially leaks the vote data, as we could potentially guess the value.
-
-This is why a note shoud be done on the metadata selected and the threshold selected.
-
-FIXME: When reveal we also need ot think about the opposite request. As an example:
-I can select the age above 60, which represent 1 vote. When cehcking before the gatway
-I will say this requets is not valid, as it will leak the result.
-However, the opposite is also true, meaning that if I request the vote bellow 60
-I will get all the votes. Then I can simply compare the polling result with the one
-obtain. Which will leak the current user!
+Reasonable limits should be consider based on the possible value of the metadata. As an example, for the age value, we can reasonably assume a constraint limit between 0 and 120. If we defined too much restricted constraints, as an age of 20-30, people from Italia... we will filter the participants, which might be the initial though, but on the other hand this can leak the participants behind the address. By restricting the dataset, we are indirectly exposing participant identities.
 
 ### Metadata customization
 
-By our approach, we can add any kind of metadata and filter of operation.
+By our approach, we can add and customize metadata and filters. Indeed, an opperation can accept a bytes value, meaning that during the decoding process, you can handle it as you want. To defined a new metadata or filter, you can modify the `IFilter.sol` file and update the core logic yo handle the filter in the `MetadataVerifier` contract.
 
-On the operation side, we are expected to have a bytes, meaning that the decryption can be done as we want.
-
-However, the multiple choice can complexify it.
-By allowing the user this time to select multiple value.
-
-Where do want to go on vacation?
-France / Italia / Vietnam
-
-We can differenciate those two pollings, even if we have the same result, the condition will not be the same.
+As an example, we could update our filter mechanism to handle more granuarly categorical values. For instance, be able to handle complex categorical value as the list of countries a person went: "France", "Italia", "Vietnam"...
 
 ### Whitelist mechanism
 
-In our protocol, we also allow the possibility to create a whitelist mechanism.
+In our protocol, Polling and Benchmark can be subject to whitelisted mechanism. To handle it, our protocol will store the root hash of the Merkle Tree. When a user want to submit an entry, he will need to provide the proving path of the Merkle Tree to validate it. On the Merkle-Tree, we are relying on the OpenZeppelin package (https://github.com/OpenZeppelin/merkle-tree). To defined a new one, you can do:
 
-Polling and Benchmark can be subject to whitelisted mechanism. To handle it, our protocol will store the root hash of the Merkle Tree. When a user want to submit an entry, he will need to provide the proving path of the Merkle Tree to validate it.
+```TypeScript
+import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 
-A survey can also be whitelisted. To limit the on-chain computation, we are relying on the Merkle-Tree from the OpenZeppelin package (https://github.com/OpenZeppelin/merkle-tree)
+// ...
+
+// Defined the list of whitelisted address and compute the associated tree
+const whitelistedAddresses = [
+  [this.signers.alice.address],
+  [this.signers.bob.address],
+  [this.signers.carol.address],
+  [this.signers.dave.address],
+];
+const tree = StandardMerkleTree.of(whitelistedAddresses, ["address"]);
+
+const surveyParams = {
+  ...validSurveyParam,
+  isWhitelisted: true,
+  whitelistRootHash: tree.root,  // Define the root tree in the survey
+};
+
+// ...
+
+// When a user want to proove he is part of a whitelisted tree,
+// he needs to generate a proof path based on the original tree.
+let whitelistedProof: HexString[] = [];
+for (const [i, v] of tree.entries()) {
+  if (v[0] === signer.address) {
+    whitelistedProof = tree.getProof(i);
+    break;
+  }
+}
+```
 
 ### Reveal data
 
