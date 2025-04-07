@@ -3,7 +3,7 @@
 <br />
 <div align="center">
   <a href="#">
-    <img src="./logo.png" alt="Logo" width="250" height="250">
+    <img src="./logo.jpeg" alt="Logo" width="250" height="250">
   </a>
 
 <h3 align="center">Private Polling & Benchmark Protocol</h3>
@@ -226,34 +226,53 @@ await this.survey["executeQuery(uint256,uint256)"](0, 100);
 
 Once the query is fully executed over all the data, we need to verify that the data does not leak any information. This verification step is done by taking into account the number of selected votes. If we do not reached the expected threshold the query will be consider invalid. To have access to the result, we will need to wait the gateway process to decrypt the expected result.
 
+### Fetch the Analyse result
+
+Once the result of the survey reveal you can fetch the result directly on chain. For that, you can request it by doing:
+
+```TypeScript
+const queryId = 0;  // To modify in your case
+const queryData = await this.survey.queryData(queryId);
+```
+
+To ensure the result is valid and reveal, you will have to verify that the flags `isCompleted` and `isValid` are activated.
+
 ## Business opportunity
+
+Data are gold. However, privacy matter. Through our system, we allow the possibility to analyse polling and benchmark in detail, without revealing the user data.
+
+Future development of this can lead to economic incentivize
+remuneration mechanism to rewards participant n d
 
 An analyst will be interesting to have a view on the data as it is king.
 In order to get it, he will be in charge to pay an additional fees to remunerate the other who has share they private data.
 
-# Business Opportunity
+### Reward participants
 
-And another one could be add the possibility to "sell" the request.
-Indeed, executing over all the date are kind of costly. Thus, it represents
-a certain cost to run and execute. So, one potential idea could be to have a
-public query but need to buy the output to avoid running again the same query.
+To inventivize participants, we can reward them each time they are submiting an entry for a polling or a benchark. By doing so, we are reward them to providing accurate data.
 
-We can have then two kinds of market
-First one will be to execute the query and thus add the possibility to pay back
-the users.
-Or the second cases could be to pay the executed query and give a fee to the users.
-TODO: Add those point in the README:Business idea section
-=> Need to think to have a ready for prod product, and maybe a DAO to pay back this
-TOken allocation to contributed users? Need to brainstorm about it!
+Note that flood verification mechanims will need to be set. Indeed, at the moment, in our protocol, no mechanims block if a user submit multiple entries using multiple wallets.
+
+### Sell analyst requested done
+
+Currently analyse request are "free", apart the execution cost. A modification could be to request a payment each time an analyse is done, allowing us to easily rewards participants of the polling.
+
+### Analyse second market
+
+As mention beforehand, the analyse requets needs to be executed and have thus have gas fee. A modification in the protocol can be made to encrypt the result of the survey to only whitelisted member. By doing so, an analyst can get reward by selling a query executed. A fee can be taken and sent to the user, while the other can be taken to the analyst.
+
+THis mechanism can be interesting depending of the number of data. Indeed, as we need to iterate over all the dataset, it might be intersting to propose a cheaper query by selling directly the result. For that a modification in the query mechanism will need to be done, to allow the possibility to have encrypted request result.
+
+### encrypted query
+
+At the moment, the query realized are public, meaning full transparency on the analyse done on the data. It allows the possibility to anyone to see what is going on on the dataset. However, regarding businesses opportunity, it may leak some information and opportunities. A possibility could be to encrypt the query inputs, allowing full confidentiality on the request executed, while preserving confidential metadata of the users. Depending of the philosophie of the protocol, this kind of request can be "tax" higher than traditional one.
+
+Depending if we want full transparency on the network or not.
+
+## Roadmap
 
 > Possibiltiy to create theshold area allowing decryption/reveal of the data from the vote or the analysis
 > ==> BUT this leads to a potential single point of failure where we do not have enough participants it locks the smart contract. As we will not be able to decypher it without revealing the user vote.
-
-TODO: Possibility to have encrypted query
-// We could push the encryption boundaries further, by encrypting the query too
-// Or we want transparency on the user data requested?
-
-## Roadmap
 
 - [] At the moment we do not handle complex polling data. Meaning that we only have two choice at the moment (true/false). An improvment could be to add other possibilities allowing more customization. Also, another level of improvment will be to manage multiple user choice. But thought those features, we will need to reconsider the design as it is polling feature and not a benchark one.
 
@@ -277,41 +296,14 @@ TODO: Possibility to have encrypted query
 
 --> How to check user metadata consistency? Can we kind of centralize user metadata information?
 
-## Avoid using encrypted indexes
-
-Currently, when we want to filter on some data, we need to iterate over all of them to be able to preserve homomorphic encryption.
-However, this is gas intensive and should be avoid.
-
-https://docs.zama.ai/fhevm/smart-contract/loop#avoid-using-encrypted-indexes
-
-To handle it, one possibility will be to know, beforehand, which fields we want to aggregate on. For instance, we could see of a tree structure.
-However, this can potentially leads to some leak.
-For instance, if we have a metadata on the age. We can try to guess the tree structure data, by providing encrypted age that could indicate the path of the tree.
-
 ## Attack example when interactive reveal
 
-=> Handle!
-
-1. In a case of a whitelist, we can potentially block the vote. As an example, at any moment, we can decypher the vote in order to have a current view on the voting. However, in case we have a whitelitsed sets, the set of participants is finite. Meaning that if we are requesting to decypher the data when we have one last participants, we can induct his vote, which breaks the privacy design.
-
-=> By the current design, it is not possible to handle it correctly. Some can just start multiple requests at the same time, with doublon and wait for a user until he traps it.
-
-2. Potential leak on repeated queries between vote. For instance, let's say we already have 20 participants that have voted. We would like to analyse the result based on the age. Let's say now, a new participant vote, now the malicious analyst can again start a new query and check the differences between previous and before. We will not know the direct result, however, we will have an indication on the participant metadata.
-   => Design limitation at the moment
-   => We can go furher, now let's say someone is determined to kind of know your associated metadata. He can decided to let's say try to have an understanding of the data before, by doing a full analyse of the state S. Then, when a new user vote, he can decide to do all the previous analyse that kind of cover the previous dataset, to understand and determine some information about the new vote. This kind of approach is possible for a determined user.
-   => Should we also add a theshold parameter here.
-   => TODO: add a task to add a parameter for this one
-
-==> Issue: when do we do the analyse. I mean, if we are doing during a vote, could we have an issue on the number of votes?
-=> No, as the number of votes will keep increase while the analyse is done.
-
-When we create a query, we are storing when we can reveal it on the expected number of voters. else it will be consider as pending until we have enough votes to not leak the users data.
-
-=> Hande it by a flag indicating if we want to decypher the data, when all the participants have voted or not.
-
-=> Can slo be handle at the initialization by defining rules to the data aggregation.
+- A potential attacks could be on metadata restriction. Currently, we allow the possibility when doing a vote to restricted the metadata. Thus, anyone can set a metadata constraint as an age between 20 and 30. However, by doing so, we are putting some indications on the metadata. And if we are considering multiple survey constraint, this can lead to a leak. As an example, if I have two survey on for age above 30 and another less than 32 and that both submit entry are consider valid, then it leaks the user data.
+  => This is why, by design, people should remain cautious when submitting data, especially on the threshold parameter and the metadata constraint, as we cannot avoid malicous actors.
 
 # Graph section
+
+## Notes
 
 // TODO: To optimize the verification process query verificaiton
 
