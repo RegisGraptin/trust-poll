@@ -235,3 +235,7 @@ This project is licensed under MIT.
 #FIXME: Update readme
         // FIXME: when building I have an issue here as it seems I cannot build it in legacy mode
         // "--via-ir" need to provide this option.
+
+
+pnpm deploy-sepolia
+npx hardhat verify-deployed --address 0x6618e689cdEF9CD7FF71C668c3D9746D60493Ba4 --contract contracts/Survey.sol:Survey --network sepolia

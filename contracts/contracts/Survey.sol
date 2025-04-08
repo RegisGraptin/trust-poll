@@ -61,6 +61,14 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         return _surveyData[surveyId];
     }
 
+    function surveyDetails(uint256 surveyId) external view returns (SurveyParams memory, SurveyData memory) {
+        return (_surveyParams[surveyId], _surveyData[surveyId]);
+    }
+
+    function lastSurveyId() external view returns (uint256) {
+        return _surveyIds;
+    }
+
     //////////////////////////////////////////////////////////////////
     /// Survey management
     //////////////////////////////////////////////////////////////////
