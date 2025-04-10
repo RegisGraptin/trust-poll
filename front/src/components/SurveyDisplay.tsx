@@ -1,4 +1,5 @@
 import {
+  MetadataType,
   SurveyData,
   SurveyParams,
   SurveyType,
@@ -25,6 +26,18 @@ const SurveyDisplay = ({
 }) => {
   const { address: userAddress } = useAccount();
   const { data: hasVoted } = useHasVoted(surveyId, userAddress);
+
+  const [userMetadata, setUserMetadata] = useState<
+    (boolean | number | undefined)[]
+  >([]);
+
+  const handleMetadataChange = (index: number, value: boolean | number) => {
+    setUserMetadata((prev) => {
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
+    });
+  };
 
   const [state, setState] = useState<SurveyState>(SurveyState.TERMINATED);
 
@@ -114,19 +127,58 @@ const SurveyDisplay = ({
             </dd>
           </div>
 
-          {surveyParams.metadataNames?.length > 0 && (
-            <div>
-              <h4 className="font-medium text-gray-600 text-sm mb-1">
-                Metadata:
+          {/* Collect the user metadata */}
+          {surveyParams.metadataTypes?.length > 0 && (
+            <div className="mt-4 space-y-4">
+              <h4 className="font-semibold text-sm text-secondary">
+                Your Metadata
               </h4>
-              <ul className="list-disc list-inside text-gray-900 text-sm space-y-1">
-                {surveyParams.metadataNames.map((metadataName, index) => (
-                  <li key={index}>{metadataName}</li>
-                ))}
-              </ul>
+
+              {surveyParams.metadataTypes.map((type, index) => {
+                const value = userMetadata[index];
+
+                return (
+                  <div
+                    key={index}
+                    className="grid grid-cols-3 items-center gap-4 mb-3"
+                  >
+                    <label className="col-span-1 font-medium text-sm text-base-content text-left">
+                      {surveyParams.metadataNames[index]}
+                    </label>
+
+                    {type === MetadataType.BOOLEAN ? (
+                      <select
+                        className="select select-bordered select-lg col-span-2 w-full"
+                        value={value === undefined ? "" : String(value)}
+                        onChange={(e) =>
+                          handleMetadataChange(index, e.target.value === "true")
+                        }
+                        required
+                      >
+                        <option value="">Select</option>
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="number"
+                        className="input input-bordered input-lg col-span-2 w-full"
+                        value={Number(value) ?? ""}
+                        min="0"
+                        onChange={(e) =>
+                          handleMetadataChange(index, Number(e.target.value))
+                        }
+                        required
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
+
+        {/* Collect the user entry */}
         <div className="flex flex-col gap-2 mt-4">
           {state === SurveyState.ONGOING &&
             surveyParams.surveyType === SurveyType.POLLING && (
@@ -155,10 +207,10 @@ const SurveyDisplay = ({
             )}
 
           {state === SurveyState.ONGOING &&
-            surveyParams.surveyType === SurveyType.POLLING && (
+            surveyParams.surveyType === SurveyType.BENCHMARK && (
               <>
                 <div>
-                  <h2>TODO</h2>
+                  <h2>TODO:</h2>
                 </div>
               </>
             )}

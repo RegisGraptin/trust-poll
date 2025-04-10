@@ -75,16 +75,13 @@ const SurveyCreationForm = () => {
       surveyPrompt: question,
       surveyType: surveyType == "polling" ? 0 : 1,
       isWhitelisted: false,
-      whitelistRootHash:
-        "0x0000000000000000000000000000000000000000000000000000000000000000", // FIXME: Can we improve this
+      whitelistRootHash: "0x" + "0".repeat(64), // Empty hash root
       surveyEndTime: dateToTimestamps(endSurveyTime),
       minResponseThreshold: threshold,
       metadataNames: metadataNames,
       metadataTypes: metadataTypes,
       constraints: [],
     };
-
-    console.log(surveyParams);
 
     writeCreateSurvey(writeContract, surveyParams);
   };
