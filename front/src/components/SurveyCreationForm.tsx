@@ -210,12 +210,58 @@ const SurveyCreationForm = () => {
           </div>
         </div>
 
-        {/* Live Preview */}
-        <div className="flex-1 card bg-base-100/10 backdrop-blur-lg">
-          <div className="card-body">
-            <h3 className="font-bold mb-4">Preview</h3>
-            <p className="text-lg mb-4">{question || "Your question here"}</p>
-            <div className="space-y-2">
+        <div className="flex-1 card bg-base-100/10 backdrop-blur-lg h-full min-h-[300px]">
+          <div className="card-body flex flex-col justify-between">
+            {/* Content */}
+            <div>
+              <h3 className="font-bold mb-4">Preview</h3>
+              <p className="text-lg mb-4">{question || "Your question here"}</p>
+
+              {/* Metadata Preview */}
+              {metadataFields.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-semibold text-sm text-secondary mb-2">
+                    Encrypted Metadata Fields
+                  </h4>
+                  <ul className="space-y-2">
+                    {metadataFields.map((meta, index) => (
+                      <li
+                        key={index}
+                        className="flex items-center justify-between text-sm bg-base-200 px-3 py-2 rounded-md"
+                      >
+                        <span className="font-medium">
+                          {meta.name || `Field ${index + 1}`}
+                        </span>
+                        <span className="badge badge-outline">{meta.type}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Polling Settings */}
+            <div className="mt-6">
+              <h4 className="font-semibold text-sm text-primary mb-2">
+                Survey Settings
+              </h4>
+              <div className="space-y-2 text-sm text-base-content">
+                <div className="flex items-center justify-between bg-base-100 border border-base-300 px-3 py-2 rounded-md">
+                  <span className="font-medium">Min Threshold</span>
+                  <span>{threshold}</span>
+                </div>
+
+                {endSurveyTime && (
+                  <div className="flex items-center justify-between bg-base-100 border border-base-300 px-3 py-2 rounded-md">
+                    <span className="font-medium">Ends At</span>
+                    <span>{new Date(endSurveyTime).toLocaleDateString()}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="space-y-2 mt-6">
               {["Yes", "No"].map((opt, i) => (
                 <button key={i} className="btn btn-block btn-outline">
                   {opt || `Option ${i + 1}`}
