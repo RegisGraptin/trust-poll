@@ -238,4 +238,4 @@ This project is licensed under MIT.
 
 
 pnpm deploy-sepolia
-npx hardhat verify-deployed --address 0x6618e689cdEF9CD7FF71C668c3D9746D60493Ba4 --contract contracts/Survey.sol:Survey --network sepolia
+npx hardhat verify-deployed --address 0x2ba30ebCB3CeaE5c587799149d5680F51584A2aC --contract contracts/Survey.sol:Survey --network sepolia

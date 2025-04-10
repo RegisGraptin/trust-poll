@@ -1,12 +1,12 @@
-import { useSurvey, useSurveyDataList, writeCreateSurvey } from "@/hook/survey";
+import {
+  MetadataType,
+  useSurvey,
+  useSurveyDataList,
+  writeCreateSurvey,
+} from "@/hook/survey";
 import { dateToTimestamps } from "@/utils/date";
 import { useState } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-
-enum MetadataType {
-  BOOLEAN,
-  UINT256,
-}
 
 const SurveyCreationForm = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -71,9 +71,6 @@ const SurveyCreationForm = () => {
       metadataTypes.push(metadata.type);
     });
 
-    console.log(metadataNames);
-    console.log(metadataTypes);
-
     const surveyParams = {
       surveyPrompt: question,
       surveyType: surveyType == "polling" ? 0 : 1,
@@ -84,12 +81,12 @@ const SurveyCreationForm = () => {
       minResponseThreshold: threshold,
       metadataNames: metadataNames,
       metadataTypes: metadataTypes,
-      constraints: ([] = []),
+      constraints: [],
     };
 
     console.log(surveyParams);
 
-    // writeCreateSurvey(writeContract, surveyParams);
+    writeCreateSurvey(writeContract, surveyParams);
   };
 
   return (

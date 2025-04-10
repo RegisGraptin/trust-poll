@@ -10,6 +10,11 @@ export enum SurveyType {
   BENCHMARK,
 }
 
+export enum MetadataType {
+  BOOLEAN,
+  UINT256,
+}
+
 export type SurveyParams = {
   surveyPrompt: string;
   surveyType: SurveyType;
@@ -17,8 +22,8 @@ export type SurveyParams = {
   whitelistRootHash: string;
   surveyEndTime: number;
   minResponseThreshold: Number;
-  metadataNames: [];
-  metadataTypes: [];
+  metadataNames: string[];
+  metadataTypes: MetadataType[];
   constraints: [][];
 };
 
