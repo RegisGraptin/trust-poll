@@ -18,6 +18,7 @@ struct SurveyParams {
     bytes32 whitelistRootHash; // Merkle root hash for allowlist verification (if restricted)
     uint256 surveyEndTime; // UNIX timestamp when survey closes
     uint256 minResponseThreshold; // Minimum number of responses required before analysis/reveal
+    string[] metadataNames; // Name of the metadata fields
     MetadataType[] metadataTypes; // List of metadata requirements from participants
     Filter[][] constraints; // Constraints defining a valid metadata
 }

@@ -24,6 +24,7 @@ declare module "mocha" {
       signer,
       surveyId,
       entry,
+      surveyMetadataName,
       surveyMetadataType,
       userMetadata,
       tree,
@@ -31,6 +32,7 @@ declare module "mocha" {
       signer: HardhatEthersSigner;
       surveyId: number;
       entry: boolean;
+      surveyMetadataName?: string[];
       surveyMetadataType?: MetadataType[];
       userMetadata?: any[];
       tree?: StandardMerkleTree<string[]>;
@@ -65,6 +67,7 @@ const validSurveyParam: SurveyParamsStruct = {
   whitelistRootHash: new Uint8Array(32),
   surveyEndTime: SURVEY_END_TIME,
   minResponseThreshold: 4,
+  metadataNames: [],
   metadataTypes: [],
   constraints: [],
 };
@@ -99,8 +102,8 @@ const analyseScenarioTestCases = [
       minResponseThreshold: 4,
       pollingVotes: [true, true, false, true, false, true, true, true, true],
       surveyMetadataTypes: [MetadataType.UINT256, MetadataType.BOOLEAN],
+      surveyMetadataNames: ["Age", "Gender"],
       userMetadata: [
-        // [Age, Gender]
         [24, true],
         [27, false],
         [28, true],
@@ -132,6 +135,7 @@ const analyseScenarioTestCases = [
       minResponseThreshold: 5,
       pollingVotes: [true, true, false, true, false, true, true, true, true],
       surveyMetadataTypes: [MetadataType.UINT256, MetadataType.BOOLEAN],
+      surveyMetadataNames: ["Age", "Gender"],
       userMetadata: [
         // [Age, Gender]
         [24, true],
@@ -354,6 +358,7 @@ describe("Survey", function () {
     const surveyMetadataType = [MetadataType.UINT256, MetadataType.BOOLEAN];
     const surveyParams = {
       ...validSurveyParam,
+      metadataNames: ["Age", "Gender"],
       metadataTypes: surveyMetadataType, // [Age, Gender]
       constraints: [
         // Age constraint
@@ -426,12 +431,14 @@ describe("Survey", function () {
     it(`should handle analyse on: ${name}`, async function () {
       const voterNames = ACCOUNT_NAMES;
       const pollingVotes = params.pollingVotes;
+      const surveyMetadataNames = params.surveyMetadataNames;
       const surveyMetadataTypes = params.surveyMetadataTypes;
       const userMetadata = params.userMetadata;
 
       const surveyParam = {
         ...validSurveyParam,
         minResponseThreshold: params.minResponseThreshold,
+        metadataNames: surveyMetadataNames,
         metadataTypes: surveyMetadataTypes,
       };
 

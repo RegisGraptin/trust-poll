@@ -90,6 +90,10 @@ contract Survey is ISurvey, IAnalyze, SepoliaZamaFHEVMConfig, SepoliaZamaGateway
         // Have a valid threshold
         if (params.minResponseThreshold < 3) revert InvalidSurveyParameter("Invalid minimum response threshold");
 
+        // Verify we have the same length for the metadata
+        if (params.metadataNames.length != params.metadataTypes.length)
+            revert InvalidSurveyParameter("Metadata names and type length do not match");
+
         euint256 eResponses = TFHE.asEuint256(0);
         TFHE.allowThis(eResponses);
 

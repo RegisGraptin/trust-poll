@@ -26,7 +26,6 @@ const SurveyDisplay = ({
   const { address: userAddress } = useAccount();
   const { data: hasVoted } = useHasVoted(surveyId, userAddress);
 
-  const [isActive, setIsActive] = useState(false);
   const [state, setState] = useState<SurveyState>(SurveyState.TERMINATED);
 
   const onVote = (entry: boolean) => {
@@ -71,9 +70,9 @@ const SurveyDisplay = ({
   return (
     <div className="card w-full bg-base-100 shadow-xl border-2 border-primary">
       {/* Status Banner */}
-      <div className={`alert alert-success`}>
+      <div className="bg-primary/10 text-primary rounded-t-xl px-4 py-3">
         <div className="w-full text-center">
-          <h3 className="font-bold text-md">{getStatusMessage()}</h3>
+          <h3 className="font-semibold text-sm">{getStatusMessage()}</h3>
         </div>
       </div>
 
@@ -86,6 +85,17 @@ const SurveyDisplay = ({
         </div>
 
         {/* FIXME: Show threshold & Metadata */}
+
+        <div>
+          <p>
+            Min threshold:
+            <span>{surveyParams.minResponseThreshold.toString()}</span>
+          </p>
+
+          <ul>
+            {surveyParams.}
+          </ul>
+        </div>
 
         <div className="flex flex-col gap-2 mt-4">
           {state === SurveyState.ONGOING &&
