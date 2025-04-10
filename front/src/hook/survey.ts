@@ -5,9 +5,14 @@ import Survey from "@/abi/Survey.json";
 const SURVEY_CONTRACT_ADDRESS =
   process.env.NEXT_PUBLIC_SURVEY_CONTRACT_ADDRESS!;
 
+export enum SurveyType {
+  POLLING,
+  BENCHMARK,
+}
+
 export type SurveyParams = {
   surveyPrompt: string;
-  surveyType: Number;
+  surveyType: SurveyType;
   isWhitelisted: boolean;
   whitelistRootHash: string;
   surveyEndTime: number;
@@ -28,13 +33,15 @@ export function useSurvey<TFunctionName extends string>(
   functionName: TFunctionName,
   args?: any[]
 ) {
+  const argsDefined = args?.every((arg) => arg !== undefined);
+
   return useReadContract({
     address: getAddress(SURVEY_CONTRACT_ADDRESS!),
     abi: Survey.abi,
     functionName,
     args,
     query: {
-      enabled: !!SURVEY_CONTRACT_ADDRESS, // Only enable when address exists
+      enabled: !!SURVEY_CONTRACT_ADDRESS && argsDefined, // Only enable when address and parameters exist
     },
   });
 }
@@ -74,4 +81,11 @@ export function writeCreateSurvey(
     functionName: "createSurvey",
     args: [surveyParams],
   });
+}
+
+export function useHasVoted(
+  surveyId: number,
+  userAddress: Address | undefined
+) {
+  return useSurvey("hasVoted", [surveyId, userAddress]);
 }

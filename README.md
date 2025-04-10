@@ -12,7 +12,7 @@
     A trustless on-chain solution for privacy-preserving surveys and benchmarking using FHE.
     <br />
     <br />
-    <a href="#">Code</a>
+    <a href="https://github.com/RegisGraptin/trust-poll">Code</a>
     &middot;
     <a href="#">View Demo</a>
     &middot;
