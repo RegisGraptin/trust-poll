@@ -123,17 +123,25 @@ const SurveyCreationForm = () => {
               onChange={(e) => setQuestion(e.target.value)}
             />
 
-            {/* Yes / No */}
-            {["Yes", "No"].map((opt, i) => (
+            {surveyType === "polling" ? (
+              ["Yes", "No"].map((opt, i) => (
+                <input
+                  key={i}
+                  type="text"
+                  placeholder={`Option ${i + 1}`}
+                  className="input input-bordered mb-2"
+                  value={opt}
+                  disabled
+                />
+              ))
+            ) : (
               <input
-                key={i}
                 type="text"
-                placeholder={`Option ${i + 1}`}
+                placeholder="User entry"
                 className="input input-bordered mb-2"
-                value={opt}
-                disabled={true}
+                disabled
               />
-            ))}
+            )}
 
             <input
               type="date"
@@ -262,11 +270,19 @@ const SurveyCreationForm = () => {
 
             {/* Options */}
             <div className="space-y-2 mt-6">
-              {["Yes", "No"].map((opt, i) => (
-                <button key={i} className="btn btn-block btn-outline">
-                  {opt || `Option ${i + 1}`}
-                </button>
-              ))}
+              {surveyType === "polling" ? (
+                ["Yes", "No"].map((opt, i) => (
+                  <button key={i} className="btn btn-block btn-outline">
+                    {opt || `Option ${i + 1}`}
+                  </button>
+                ))
+              ) : (
+                <input
+                  type="text"
+                  placeholder="User entry"
+                  className="input input-bordered mb-2"
+                />
+              )}
             </div>
           </div>
         </div>
