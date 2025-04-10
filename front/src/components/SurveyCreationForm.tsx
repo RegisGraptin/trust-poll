@@ -12,6 +12,31 @@ const SurveyCreationForm = () => {
 
   const [surveyType, setSurveyType] = useState("polling");
 
+  const [metadataFields, setMetadataFields] = useState<
+    { name: string; type: string }[]
+  >([]);
+
+  const addMetadataField = () => {
+    if (metadataFields.length < 5) {
+      setMetadataFields([...metadataFields, { name: "", type: "boolean" }]);
+    }
+  };
+
+  const updateMetadataField = (
+    index: number,
+    key: "name" | "type",
+    value: string
+  ) => {
+    const updated = [...metadataFields];
+    updated[index][key] = value;
+    setMetadataFields(updated);
+  };
+
+  const removeMetadataField = (index: number) => {
+    const updated = metadataFields.filter((_, i) => i !== index);
+    setMetadataFields(updated);
+  };
+
   const {
     data: hash,
     error,
@@ -35,6 +60,7 @@ const SurveyCreationForm = () => {
         "0x0000000000000000000000000000000000000000000000000000000000000000", // FIXME: Can we improve this
       surveyEndTime: dateToTimestamps(endSurveyTime),
       minResponseThreshold: threshold,
+      metadataNames: ([] = []),
       metadataTypes: ([] = []),
       constraints: ([] = []),
     };
@@ -129,15 +155,49 @@ const SurveyCreationForm = () => {
               />
             </div>
 
-            <div className="collapse">
-              <input
-                type="checkbox"
-                checked={showAdvanced}
-                onChange={() => setShowAdvanced(!showAdvanced)}
-              />
-              <div className="collapse-title">Advanced Settings</div>
-              <div className="collapse-content">
-                {/* Advanced settings fields */}
+            <div className="mt-4">
+              {/* Metadata Dynamic Form */}
+              <div className="space-y-4">
+                {metadataFields.map((field, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Metadata name"
+                      className="input input-bordered w-full"
+                      value={field.name}
+                      onChange={(e) =>
+                        updateMetadataField(index, "name", e.target.value)
+                      }
+                    />
+                    <select
+                      className="select select-bordered"
+                      value={field.type}
+                      onChange={(e) =>
+                        updateMetadataField(index, "type", e.target.value)
+                      }
+                    >
+                      <option value="boolean">boolean</option>
+                      <option value="uint256">uint256</option>
+                    </select>
+                    <button
+                      className="btn btn-circle btn-outline text-error"
+                      onClick={() => removeMetadataField(index)}
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+
+                {metadataFields.length < 5 && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline btn-primary"
+                    onClick={addMetadataField}
+                  >
+                    + Add metadata
+                  </button>
+                )}
               </div>
             </div>
 
