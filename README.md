@@ -242,7 +242,7 @@ To ensure the result is valid and reveal, you will have to verify that the flags
 
 ## Protocol Overview
 
-TODO: 
+![Protocol Overview](./diagram.png)
 
 ## Protocol Attacks 
 
