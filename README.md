@@ -237,27 +237,28 @@ const queryData = await this.survey.queryData(queryId);
 
 To ensure the result is valid and reveal, you will have to verify that the flags `isCompleted` and `isValid` are activated.
 
+<!-- TODO: spelling and reread -->
+
 ## Business opportunity
 
-Data are gold. However, privacy matter. Through our system, we allow the possibility to analyse polling and benchmark in detail, without revealing the user data.
-
-Future development of this can lead to economic incentivize
-remuneration mechanism to rewards participant n d
-
-An analyst will be interesting to have a view on the data as it is king.
-In order to get it, he will be in charge to pay an additional fees to remunerate the other who has share they private data.
+Data are gold and privacy matter. Be able to proceed personal data are a real challenge. Through our approach, we allow the possibility, in a certain extend, to analyse the collected polling and benchamrking data without compromising the users. In order to push people to use our system, we need to create incentivize mechanisms allowing them to get rewarded for sharing those encrypted data. We can design an economical approach as analysts could be willing to pay to have access to those data. This could be done on the next development phase of our product but here are the current thoughts possible.
 
 ### Reward participants
 
-To inventivize participants, we can reward them each time they are submiting an entry for a polling or a benchark. By doing so, we are reward them to providing accurate data.
+To inventivize participants, we need to think about reward mechanisms pushing them to use and submit accurate entries. This can be done by tracking user submission, and minting an ERC20 each time a user made an entry. Then, each time a analyst will request a query, to analyse the data, he can pay a fee to remunerate the participants. Some limitation at the moment need to be consider as anyone can create another address and submit a new entry. This flood mechanism does not appear for whitelisted as we restricted the user. To handle it, we can think to add a human verification mechanism.
 
-Note that flood verification mechanims will need to be set. Indeed, at the moment, in our protocol, no mechanims block if a user submit multiple entries using multiple wallets.
+Another though is regarding the selectivity of the data. Some people would not be interested to share they data directly to eventually expect future yield. On the other side, depending of the sensitivity and the quality of the requested data, we might need to defined a pool reward mechanism where organiser set an amount for all people that can justify this kind of selected information. This can be manage by providing a ZK-proof that the user owned an information or be a member of something without having a whitelisted mechanism that can restraint the participants as we need to know, before hand, all the participants.
 
-### Sell analyst requested done
+### Second market for analysis
 
-Currently analyse request are "free", apart the execution cost. A modification could be to request a payment each time an analyse is done, allowing us to easily rewards participants of the polling.
+One kind of drawbacks of our survey mechanism is that a analyst will need to iterate for one query over all the data. Meaning that it could have a certain cost depending of the chain it is deployed. Currently, the result of the analyse is public, meaning that anyone can read the result without having to execute completed the request.
+This leads to transparency on what requests are done through our protocol. However, it can lead to some unexpected behaviour, where analyst can just monitor and wait queries to be executed to see the result freely.
 
-### Analyse second market
+To handle this case, one modification on the protocol could be to encrypt the query. By doing only the analyst can know the result of the query. And, we can through about a secondary markets, where this analyst can decide to sell the query result, allowing him to get rewarded by the accuracy and need of the query. This brings market efficiency and also reduce the analyst costs.
+
+Indeed the cost of the query will be limited by the execution cost.
+
+Eventually, he can decided to sell it just bellow, but depending of the need of the result, someone can just re execute it and propose a lower cost.
 
 As mention beforehand, the analyse requets needs to be executed and have thus have gas fee. A modification in the protocol can be made to encrypt the result of the survey to only whitelisted member. By doing so, an analyst can get reward by selling a query executed. A fee can be taken and sent to the user, while the other can be taken to the analyst.
 
