@@ -3,6 +3,11 @@ import { dateToTimestamps } from "@/utils/date";
 import { useState } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
+enum MetadataType {
+  BOOLEAN,
+  UINT256,
+}
+
 const SurveyCreationForm = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [question, setQuestion] = useState("");
@@ -13,12 +18,15 @@ const SurveyCreationForm = () => {
   const [surveyType, setSurveyType] = useState("polling");
 
   const [metadataFields, setMetadataFields] = useState<
-    { name: string; type: string }[]
+    { name: string; type: MetadataType }[]
   >([]);
 
   const addMetadataField = () => {
     if (metadataFields.length < 5) {
-      setMetadataFields([...metadataFields, { name: "", type: "boolean" }]);
+      setMetadataFields([
+        ...metadataFields,
+        { name: "", type: MetadataType.BOOLEAN },
+      ]);
     }
   };
 
@@ -28,7 +36,9 @@ const SurveyCreationForm = () => {
     value: string
   ) => {
     const updated = [...metadataFields];
-    updated[index][key] = value;
+    if (key == "type")
+      updated[index][key] = MetadataType[value as keyof typeof MetadataType];
+    else updated[index][key] = value;
     setMetadataFields(updated);
   };
 
@@ -52,6 +62,18 @@ const SurveyCreationForm = () => {
   const createNewSurvey = () => {
     console.log("Process...");
 
+    // Extract metadata
+    let metadataNames: string[] = [];
+    let metadataTypes: MetadataType[] = [];
+
+    metadataFields.map((metadata) => {
+      metadataNames.push(metadata.name);
+      metadataTypes.push(metadata.type);
+    });
+
+    console.log(metadataNames);
+    console.log(metadataTypes);
+
     const surveyParams = {
       surveyPrompt: question,
       surveyType: surveyType == "polling" ? 0 : 1,
@@ -60,14 +82,14 @@ const SurveyCreationForm = () => {
         "0x0000000000000000000000000000000000000000000000000000000000000000", // FIXME: Can we improve this
       surveyEndTime: dateToTimestamps(endSurveyTime),
       minResponseThreshold: threshold,
-      metadataNames: ([] = []),
-      metadataTypes: ([] = []),
+      metadataNames: metadataNames,
+      metadataTypes: metadataTypes,
       constraints: ([] = []),
     };
 
     console.log(surveyParams);
 
-    writeCreateSurvey(writeContract, surveyParams);
+    // writeCreateSurvey(writeContract, surveyParams);
   };
 
   return (
@@ -179,13 +201,13 @@ const SurveyCreationForm = () => {
                     />
                     <select
                       className="select select-bordered"
-                      value={field.type}
+                      value={MetadataType[field.type]}
                       onChange={(e) =>
                         updateMetadataField(index, "type", e.target.value)
                       }
                     >
-                      <option value="boolean">boolean</option>
-                      <option value="uint256">uint256</option>
+                      <option value="BOOLEAN">boolean</option>
+                      <option value="UINT256">uint256</option>
                     </select>
                     <button
                       className="btn btn-circle btn-outline text-error"
@@ -240,7 +262,9 @@ const SurveyCreationForm = () => {
                         <span className="font-medium">
                           {meta.name || `Field ${index + 1}`}
                         </span>
-                        <span className="badge badge-outline">{meta.type}</span>
+                        <span className="badge badge-outline">
+                          {MetadataType[meta.type].toLowerCase()}
+                        </span>
                       </li>
                     ))}
                   </ul>
