@@ -17,6 +17,7 @@ export type SurveyParams = {
   whitelistRootHash: string;
   surveyEndTime: number;
   minResponseThreshold: Number;
+  metadataNames: [];
   metadataTypes: [];
   constraints: [][];
 };

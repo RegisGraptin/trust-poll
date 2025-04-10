@@ -68,7 +68,7 @@ const SurveyDisplay = ({
   };
 
   return (
-    <div className="card w-full bg-base-100 shadow-xl border-2 border-primary">
+    <div className="card w-full bg-base-100 shadow-xl border-2 border-primary relative">
       {/* Status Banner */}
       <div className="bg-primary/10 text-primary rounded-t-xl px-4 py-3">
         <div className="w-full text-center">
@@ -76,27 +76,57 @@ const SurveyDisplay = ({
         </div>
       </div>
 
+      {/* Whitelist Tooltip */}
+      {surveyParams.isWhitelisted && (
+        <div
+          className="absolute top-2 right-3 tooltip tooltip-left"
+          data-tip="Whitelisted"
+        >
+          <button className="btn btn-xs btn-circle btn-ghost text-info">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"
+              />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <div className="card-body">
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col items-center space-y-2 text-center">
           <h2 className="card-title">{surveyParams.surveyPrompt}</h2>
-          {surveyParams.isWhitelisted && (
-            <div className="badge badge-info">Whitelisted</div>
+        </div>
+
+        <div className="px-4 py-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <dt className="font-medium text-secondary">Min threshold:</dt>
+            <dd className="text-base-content">
+              {surveyParams.minResponseThreshold.toString()}
+            </dd>
+          </div>
+
+          {surveyParams.metadataNames?.length > 0 && (
+            <div>
+              <h4 className="font-medium text-gray-600 text-sm mb-1">
+                Metadata:
+              </h4>
+              <ul className="list-disc list-inside text-gray-900 text-sm space-y-1">
+                {surveyParams.metadataNames.map((metadataName, index) => (
+                  <li key={index}>{metadataName}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
-
-        {/* FIXME: Show threshold & Metadata */}
-
-        <div>
-          <p>
-            Min threshold:
-            <span>{surveyParams.minResponseThreshold.toString()}</span>
-          </p>
-
-          <ul>
-            {surveyParams.}
-          </ul>
-        </div>
-
         <div className="flex flex-col gap-2 mt-4">
           {state === SurveyState.ONGOING &&
             surveyParams.surveyType === SurveyType.POLLING && (
@@ -158,10 +188,8 @@ const SurveyDisplay = ({
           )}
 
           {state === SurveyState.TERMINATED && (
-            <div className="alert alert-success">
-              <div className="mt-2">
-                <p>Waiting for the gateway result...</p>
-              </div>
+            <div className="bg-primary/5 text-primary px-4 py-2 rounded-md mt-2 text-sm">
+              <p>Waiting for the gateway result...</p>
             </div>
           )}
 
