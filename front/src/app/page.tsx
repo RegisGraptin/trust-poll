@@ -3,21 +3,14 @@ import type { Metadata, NextPage } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "FIXME:",
-  description:"FIXME:",
-  keywords:"FIXME:",
-  alternates: {
-    canonical: "FIXME:",
-  },
+  title: "Trust Poll - Encrypted polling and benchmarking",
+  description:
+    "Create encrypted polling and benchmarking and get reward form it",
+  keywords: "encrypted, polling, benchmarking, FHE",
 };
 
 const Home: NextPage = () => {
-  return (
-    // <main className="bg-gray-50 min-h-screen">
-     
-     <Landing />
-    // </main>
-  );
+  return <Landing />;
 };
 
 export default Home;

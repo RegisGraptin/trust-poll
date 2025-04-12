@@ -3,13 +3,12 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 export default function Header() {
   return (
     <>
-      <nav className="block w-full max-w-screen-lg px-4 py-2 mx-auto bg-[#0A1A2F] text-white bg-opacity-90 sticky top-3 shadow lg:px-8 lg:py-3 backdrop-blur-lg backdrop-saturate-150 z-[9999]">
-        <div className="container flex flex-wrap items-center justify-between mx-auto">
+      <nav className="block w-full max-w-screen-lg px-4 py-2 mx-auto text-white shadow lg:px-8 lg:py-3 z-[9999] rounded">
+        <div className="container flex flex-wrap items-center justify-between mx-auto mt-5">
           <a
             href="/"
             className="mr-4 block cursor-pointer py-1.5 text-base font-semibold"
           >
-            {/* TODO: put an emoji? */}
             Trust Poll
           </a>
 

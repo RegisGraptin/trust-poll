@@ -17,6 +17,8 @@
     "@tanstack/react-query": "^5.72.0",
     "@types/react-dom": "^19.1.1",
     "@types/react-transition-group": "^4.4.12",
+    "ethers": "^6.13.5",
+    "fhevmjs": "^0.6.2",
     "next": "^15.2.4",
     "postcss": "^8.5.3",
     "react": "^19.1.0",

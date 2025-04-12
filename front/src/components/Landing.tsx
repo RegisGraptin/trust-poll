@@ -3,12 +3,14 @@
 import SurveyList from "./SurveyList";
 import SurveyCreationForm from "./SurveyCreationForm";
 import Header from "./Header";
+import { createFHEInstance } from "@/lib/fhe";
+import React from "react";
 
 export default function Landing() {
   return (
     <>
-      <Header />
       <div className="min-h-screen bg-[#0A1A2F] text-white font-inter">
+        <Header />
         <section className="container mx-auto px-4 py-20 text-center">
           <h1 className="font-space-grotesk text-4xl font-bold mb-4">
             Vote Anonymously & Get rewarded from it!

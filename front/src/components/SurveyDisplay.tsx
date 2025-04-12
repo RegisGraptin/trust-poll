@@ -5,8 +5,17 @@ import {
   SurveyType,
   useHasVoted,
 } from "@/hook/survey";
+import { getFHEInstance } from "@/lib/fhe";
+import React from "react";
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import {
+  useAccount,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
+
+import Survey from "@/abi/Survey.json";
+import { Address, toHex } from "viem";
 
 enum SurveyState {
   ONGOING,
@@ -25,7 +34,11 @@ const SurveyDisplay = ({
   surveyData: SurveyData;
 }) => {
   const { address: userAddress } = useAccount();
-  const { data: hasVoted } = useHasVoted(surveyId, userAddress);
+  const { data: hasVoted, refetch: refetchHasVoted } = useHasVoted(
+    surveyId,
+    userAddress
+  );
+  const [txLoading, setTxLoading] = useState<boolean>(false);
 
   const [userMetadata, setUserMetadata] = useState<
     (boolean | number | undefined)[]
@@ -41,10 +54,76 @@ const SurveyDisplay = ({
 
   const [state, setState] = useState<SurveyState>(SurveyState.TERMINATED);
 
-  const onVote = (entry: boolean) => {
-    console.log("Here the user entry:", entry);
-    // TODO: handle the function called
+  const {
+    data: hash,
+    error,
+    writeContract,
+    isPending: txIsPending,
+  } = useWriteContract();
+
+  const { isLoading, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  const onVote = async (entry: boolean) => {
+    setTxLoading(true);
+
+    // Get the FHE instance
+    console.log("Retrieve FHE Instance");
+    let instance = getFHEInstance();
+    if (!instance) {
+      console.log("Instance loading...");
+      setTxLoading(false);
+      return;
+    }
+
+    // Encrypt the inputs
+    console.log("Encrypt the parameters");
+    const input = instance.createEncryptedInput(
+      process.env.NEXT_PUBLIC_SURVEY_CONTRACT_ADDRESS!,
+      "" + userAddress
+    );
+
+    // Add the user entry depending of the selected value
+    input.add256(entry ? 1 : 0);
+
+    // Add the metadata
+    userMetadata.map((metadata, index) => {
+      switch (surveyParams.metadataTypes[index]) {
+        case MetadataType.BOOLEAN:
+          input.addBool(Boolean(metadata));
+          break;
+        case MetadataType.UINT256:
+          input.add256(Number(metadata));
+          break;
+        default:
+          throw TypeError("Invalid metadata type");
+      }
+    });
+    let encryptedInputs = await input.encrypt();
+
+    // Write the entry to the survey contract
+    console.log("Write the entry to the smart contract");
+    writeContract({
+      address: process.env.NEXT_PUBLIC_SURVEY_CONTRACT_ADDRESS as Address,
+      abi: Survey.abi,
+      functionName: "submitEntry",
+      args: [
+        surveyId,
+        toHex(encryptedInputs.handles[0]),
+        encryptedInputs.handles.slice(1).map((eInput) => toHex(eInput)),
+        toHex(encryptedInputs.inputProof),
+      ],
+    });
+
+    setTxLoading(false);
   };
+
+  useEffect(() => {
+    if (isConfirmed) {
+      refetchHasVoted(); // We could avoid searching on chain the parameter.
+    }
+  }, [isConfirmed]);
 
   useEffect(() => {
     if (surveyData === undefined) return;
@@ -163,7 +242,7 @@ const SurveyDisplay = ({
                       <input
                         type="number"
                         className="input input-bordered input-lg col-span-2 w-full"
-                        value={Number(value) ?? ""}
+                        value={value === undefined ? "" : Number(value)}
                         min="0"
                         onChange={(e) =>
                           handleMetadataChange(index, Number(e.target.value))
@@ -180,7 +259,14 @@ const SurveyDisplay = ({
 
         {/* Collect the user entry */}
         <div className="flex flex-col gap-2 mt-4">
-          {state === SurveyState.ONGOING &&
+          {txLoading && (
+            <div className="flex items-center justify-center">
+              <div className="w-12 h-12 border-4 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
+            </div>
+          )}
+
+          {!txLoading &&
+            state === SurveyState.ONGOING &&
             surveyParams.surveyType === SurveyType.POLLING && (
               <>
                 {!hasVoted ? (
@@ -206,7 +292,8 @@ const SurveyDisplay = ({
               </>
             )}
 
-          {state === SurveyState.ONGOING &&
+          {!txLoading &&
+            state === SurveyState.ONGOING &&
             surveyParams.surveyType === SurveyType.BENCHMARK && (
               <>
                 <div>
@@ -261,6 +348,8 @@ const SurveyDisplay = ({
               Number(surveyParams.surveyEndTime) * 1000
             ).toLocaleDateString()}
           </div>
+
+          {error && error.message}
         </div>
       </div>
     </div>
