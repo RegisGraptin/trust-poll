@@ -130,7 +130,7 @@ const SurveyCreationForm = () => {
             <input
               type="text"
               placeholder="Your question..."
-              className="input input-bordered mb-4"
+              className="w-full input input-bordered mb-4"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
             />
@@ -141,7 +141,7 @@ const SurveyCreationForm = () => {
                   key={i}
                   type="text"
                   placeholder={`Option ${i + 1}`}
-                  className="input input-bordered mb-2"
+                  className="w-full input input-bordered mb-2"
                   value={opt}
                   disabled
                 />
@@ -150,7 +150,7 @@ const SurveyCreationForm = () => {
               <input
                 type="text"
                 placeholder="User entry"
-                className="input input-bordered mb-2"
+                className="w-full input input-bordered mb-2"
                 disabled
               />
             )}
@@ -158,13 +158,13 @@ const SurveyCreationForm = () => {
             <input
               type="date"
               placeholder="Survey End Time"
-              className="input input-bordered mb-4"
+              className="w-full input input-bordered mb-4"
               value={endSurveyTime}
               onChange={(e) => setEndSurveyTime(e.target.value)}
             />
 
             <div className="mt-4">
-              <label className="label">Threshold: {threshold}</label>
+              <label className="label pr-5">Threshold: {threshold}</label>
               <input
                 type="range"
                 min="5"
@@ -210,13 +210,15 @@ const SurveyCreationForm = () => {
                 ))}
 
                 {metadataFields.length < 5 && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline btn-primary"
-                    onClick={addMetadataField}
-                  >
-                    + Add metadata
-                  </button>
+                  <div className="flex justify-center items-center gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline btn-primary"
+                      onClick={addMetadataField}
+                    >
+                      + Add metadata
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -228,7 +230,10 @@ const SurveyCreationForm = () => {
                 </div>
               )}
               {!isPending && (
-                <button className="btn" onClick={() => createNewSurvey()}>
+                <button
+                  className="mt-5 w-full btn"
+                  onClick={() => createNewSurvey()}
+                >
                   Create a new Survey
                 </button>
               )}
@@ -301,7 +306,7 @@ const SurveyCreationForm = () => {
                 <input
                   type="text"
                   placeholder="User entry"
-                  className="input input-bordered mb-2"
+                  className="w-full input input-bordered mb-2"
                 />
               )}
             </div>
