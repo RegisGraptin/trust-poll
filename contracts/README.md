@@ -1,66 +1,6 @@
-# Hardhat Template [![Open in Gitpod][gitpod-badge]][gitpod] [![Github Actions][gha-badge]][gha] [![Hardhat][hardhat-badge]][hardhat] [![License: MIT][license-badge]][license]
+# Private Polling & Benchmark Protocol - Contract 
 
-[gitpod]: https://gitpod.io/#https://github.com/zama-ai/fhevm-hardhat-template
-[gitpod-badge]: https://img.shields.io/badge/Gitpod-Open%20in%20Gitpod-FFB45B?logo=gitpod
-[gha]: https://github.com/zama-ai/fhevm-hardhat-template/actions
-[gha-badge]: https://github.com/zama-ai/fhevm-hardhat-template/actions/workflows/ci.yml/badge.svg
-[hardhat]: https://hardhat.org/
-[hardhat-badge]: https://img.shields.io/badge/Built%20with-Hardhat-FFDB1C.svg
-[license]: https://opensource.org/licenses/MIT
-[license-badge]: https://img.shields.io/badge/License-MIT-blue.svg
-
-A Hardhat-based template for developing Solidity smart contracts, with sensible defaults.
-
-- [Hardhat](https://github.com/nomiclabs/hardhat): compile, run and test smart contracts
-- [TypeChain](https://github.com/ethereum-ts/TypeChain): generate TypeScript bindings for smart contracts
-- [Ethers](https://github.com/ethers-io/ethers.js/): renowned Ethereum library and wallet implementation
-- [Solhint](https://github.com/protofire/solhint): code linter
-- [Solcover](https://github.com/sc-forks/solidity-coverage): code coverage
-- [Prettier Plugin Solidity](https://github.com/prettier-solidity/prettier-plugin-solidity): code formatter
-
-## Getting Started
-
-Click the [`Use this template`](https://github.com/zama-ai/fhevm-hardhat-template/generate) button at the top of the
-page to create a new repository with this repo as the initial state.
-
-## Features
-
-This template builds upon the frameworks and libraries mentioned above, so for details about their specific features,
-please consult their respective documentations.
-
-For example, for Hardhat, you can refer to the [Hardhat Tutorial](https://hardhat.org/tutorial) and the
-[Hardhat Docs](https://hardhat.org/docs). You might be in particular interested in reading the
-[Testing Contracts](https://hardhat.org/tutorial/testing-contracts) section.
-
-### Sensible Defaults
-
-This template comes with sensible default configurations in the following files:
-
-```text
-├── .editorconfig
-├── .eslintignore
-├── .eslintrc.yml
-├── .gitignore
-├── .prettierignore
-├── .prettierrc.yml
-├── .solcover.js
-├── .solhint.json
-└── hardhat.config.ts
-```
-
-### VSCode Integration
-
-This template is IDE agnostic, but for the best user experience, you may want to use it in VSCode alongside Nomic
-Foundation's [Solidity extension](https://marketplace.visualstudio.com/items?itemName=NomicFoundation.hardhat-solidity).
-
-### GitHub Actions
-
-This template comes with GitHub Actions pre-configured. Your contracts will be linted and tested on every push and pull
-request made to the `main` branch.
-
-Note though that to make this work, you must use your `INFURA_API_KEY` and your `MNEMONIC` as GitHub secrets.
-
-You can edit the CI script in [.github/workflows/ci.yml](./.github/workflows/ci.yml).
+Smart contract folder.
 
 ## Usage
 
@@ -185,41 +125,22 @@ pnpm deploy-sepolia
 ```
 This would automatically deploy an instance of the `MyConfidentialERC20` example contract on Sepolia.
 
-### Etherscan verification
 
-If you are using a real instance of the fhEVM, you can verify your deployed contracts on the Etherscan explorer. 
-You first need to set the `ETHERSCAN_API_KEY` variable in the `.env` file to a valid value. You can get such an API key for free by creating an account on the [Etherscan website](https://docs.etherscan.io/getting-started/viewing-api-usage-statistics). 
+### Contract deployment
 
-Then, simply use the `verify-deployed` hardhat task, via this command:
-```
-npx hardhat verify-deployed --address [ADDRESS_CONTRACT_TO_VERIFY] --contract [FULL_CONTRACT_PATH] --args "[CONSTRUCTOR_ARGUMENTS_COMMA_SEPARATED]" --network [NETWORK_NAME]
-```
-As a concrete example, to verify the deployed `MyConfidentialERC20` from previous section, you can use:
-```
-npx hardhat verify-deployed --address [CONFIDENTIAL_ERC20_ADDRESS] --contract contracts/MyConfidentialERC20.sol:MyConfidentialERC20 --args "Naraggara,NARA" --network sepolia
-```
+When compiling the contract, we notice some issue as we cannot build the contract in legacy mode. We needed to provide the `--via-ir` option. Notice that it is defined in the configuration of the project, so you not need to defined it. 
 
-Note that you should replace the address placeholder `[CONFIDENTIAL_ERC20_ADDRESS]` by the concrete address that is logged when you run the `pnpm deploy-sepolia` deployment script.
-
-### Interacting with the Contract
-
-Once you have deployed your contract to Sepolia (using `pnpm deploy-sepolia`), you can interact with it using the following commands:
+You can deploy the smart contract on sepolia by using:
 
 ```sh
-# Mint new tokens (encrypted amount)
-npx hardhat mint --to <recipient-address> --amount <amount> --network sepolia
-
-# Check the total supply
-npx hardhat totalSupply --network sepolia
-
-# Transfer tokens to another address (encrypted amount)
-npx hardhat transfer --privatekey <private-key> --to <recipient-address> --amount <amount> --network sepolia
-
-# Check encrypted balance of an account
-npx hardhat balance --privatekey <private-key> --network sepolia
+pnpm deploy-sepolia
 ```
 
-> **Note**: All token amounts in transactions are automatically encrypted to maintain confidentiality on the blockchain.
+Once the contract deployed, you can use the address to verify the smart contract. Be sure to defined the `ETHERSCAN_API_KEY` variable in the `.env` file. You can then execute the followin command:
+
+```sh
+npx hardhat verify-deployed --address 0x2ba30ebCB3CeaE5c587799149d5680F51584A2aC --contract contracts/Survey.sol:Survey --network sepolia
+```
 
 ### Syntax Highlighting
 
@@ -229,13 +150,3 @@ If you use VSCode, you can get Solidity syntax highlighting with the
 ## License
 
 This project is licensed under MIT.
-
-
-
-#FIXME: Update readme
-        // FIXME: when building I have an issue here as it seems I cannot build it in legacy mode
-        // "--via-ir" need to provide this option.
-
-
-pnpm deploy-sepolia
-npx hardhat verify-deployed --address 0x2ba30ebCB3CeaE5c587799149d5680F51584A2aC --contract contracts/Survey.sol:Survey --network sepolia
