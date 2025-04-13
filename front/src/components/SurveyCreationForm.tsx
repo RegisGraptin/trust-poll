@@ -1,17 +1,11 @@
-import {
-  MetadataType,
-  useSurvey,
-  useSurveyDataList,
-  writeCreateSurvey,
-} from "@/hook/survey";
+import { MetadataType, writeCreateSurvey } from "@/hook/survey";
 import { dateToTimestamps } from "@/utils/date";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { client } from "./wallet/WalletProvider";
 
 const SurveyCreationForm = () => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState(["", ""]);
   const [threshold, setThreshold] = useState(10);
   const [endSurveyTime, setEndSurveyTime] = useState("");
 
@@ -47,17 +41,19 @@ const SurveyCreationForm = () => {
     setMetadataFields(updated);
   };
 
-  const {
-    data: hash,
-    error,
-    writeContract,
-    isPending: txIsPending,
-  } = useWriteContract();
+  const { data: hash, error, writeContract, isPending } = useWriteContract();
 
-  const { isLoading: isConfirming, isSuccess: isConfirmed } =
-    useWaitForTransactionReceipt({
-      hash,
-    });
+  const { isSuccess } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  useEffect(() => {
+    if (isSuccess) {
+      console.log("Refetch on-chain data");
+      client.refetchQueries({ queryKey: ["lastSurveyId"] });
+      client.refetchQueries({ queryKey: ["surveyDetails"] });
+    }
+  }, [isSuccess]);
 
   const createNewSurvey = () => {
     console.log("Process...");
@@ -226,9 +222,16 @@ const SurveyCreationForm = () => {
             </div>
 
             <div>
-              <button className="btn" onClick={() => createNewSurvey()}>
-                Create a new Survey
-              </button>
+              {isPending && (
+                <div className="flex items-center justify-center">
+                  <div className="w-12 h-12 border-4 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
+                </div>
+              )}
+              {!isPending && (
+                <button className="btn" onClick={() => createNewSurvey()}>
+                  Create a new Survey
+                </button>
+              )}
             </div>
             <div>{error?.message}</div>
           </div>

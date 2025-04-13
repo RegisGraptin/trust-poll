@@ -49,10 +49,11 @@ export function useSurvey<TFunctionName extends string>(
     query: {
       enabled: !!SURVEY_CONTRACT_ADDRESS && argsDefined, // Only enable when address and parameters exist
     },
+    scopeKey: "lastSurveyId",
   });
 }
 
-export function _useSurveyDetailsList(lastSurveyId: number | undefined) {
+export function useSurveyDetailsList(lastSurveyId: number | undefined) {
   return useReadContracts({
     query: { enabled: !!lastSurveyId },
     contracts: Array.from({ length: Number(lastSurveyId) }).map((_, index) => ({
@@ -61,6 +62,7 @@ export function _useSurveyDetailsList(lastSurveyId: number | undefined) {
       functionName: "surveyDetails",
       args: [index],
     })),
+    scopeKey: "surveyDetails",
   }) as {
     data?: { status: "success"; result: [SurveyParams, SurveyData] }[];
   };
@@ -74,7 +76,7 @@ export function useSurveyDataList() {
       ? Number(lastSurveyIdResponse)
       : undefined;
 
-  return _useSurveyDetailsList(lastSurveyId ?? 0);
+  return useSurveyDetailsList(lastSurveyId ?? 0);
 }
 
 export function writeCreateSurvey(

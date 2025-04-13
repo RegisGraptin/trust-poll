@@ -6,7 +6,7 @@ import * as React from "react";
 import { WagmiProvider } from "wagmi";
 import { config } from "../../utils/wagmi";
 
-const client = new QueryClient();
+export const client = new QueryClient();
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   return (

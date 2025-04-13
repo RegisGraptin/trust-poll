@@ -286,7 +286,7 @@ const SurveyDisplay = ({
                   </div>
                 ) : (
                   <div className="alert alert-info">
-                    You've already voted on this survey
+                    You&apos;ve already voted on this survey
                   </div>
                 )}
               </>
