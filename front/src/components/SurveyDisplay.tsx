@@ -40,6 +40,8 @@ const SurveyDisplay = ({
   );
   const [txLoading, setTxLoading] = useState<boolean>(false);
 
+  const [userInputValue, setUserInputValue] = useState<string>("");
+
   const [userMetadata, setUserMetadata] = useState<
     (boolean | number | undefined)[]
   >([]);
@@ -65,7 +67,7 @@ const SurveyDisplay = ({
     hash,
   });
 
-  const onVote = async (entry: boolean) => {
+  const onVote = async (entry: number) => {
     setTxLoading(true);
 
     // Get the FHE instance
@@ -85,7 +87,7 @@ const SurveyDisplay = ({
     );
 
     // Add the user entry depending of the selected value
-    input.add256(entry ? 1 : 0);
+    input.add256(entry);
 
     // Add the metadata
     userMetadata.map((metadata, index) => {
@@ -121,6 +123,7 @@ const SurveyDisplay = ({
 
   useEffect(() => {
     if (isConfirmed) {
+      console.log("Refech user vote");
       refetchHasVoted(); // We could avoid searching on chain the parameter.
     }
   }, [isConfirmed]);
@@ -145,6 +148,16 @@ const SurveyDisplay = ({
       return;
     }
   }, [surveyData.isCompleted, surveyParams.surveyEndTime]);
+
+  const revealSurvey = () => {
+    console.log("Request to reveal the result");
+    writeContract({
+      address: process.env.NEXT_PUBLIC_SURVEY_CONTRACT_ADDRESS as Address,
+      abi: Survey.abi,
+      functionName: "revealResults",
+      args: [surveyId],
+    });
+  };
 
   const getStatusMessage = () => {
     switch (state) {
@@ -272,13 +285,13 @@ const SurveyDisplay = ({
                 {!hasVoted ? (
                   <div className="flex gap-4">
                     <button
-                      onClick={() => onVote(true)}
+                      onClick={() => onVote(1)}
                       className="btn btn-success flex-1"
                     >
                       Yes
                     </button>
                     <button
-                      onClick={() => onVote(false)}
+                      onClick={() => onVote(0)}
                       className="btn btn-error flex-1"
                     >
                       No
@@ -296,9 +309,28 @@ const SurveyDisplay = ({
             state === SurveyState.ONGOING &&
             surveyParams.surveyType === SurveyType.BENCHMARK && (
               <>
-                <div>
-                  <h2>TODO:</h2>
-                </div>
+                {!hasVoted ? (
+                  <div>
+                    <input
+                      type="number"
+                      className="input input-bordered input-lg col-span-2 w-full"
+                      value={userInputValue}
+                      min="0"
+                      onChange={(e) => setUserInputValue(e.target.value)}
+                      required
+                    />
+                    <button
+                      onClick={() => onVote(Number(userInputValue))}
+                      className="btn btn-primary flex-1 mt-2"
+                    >
+                      Submit
+                    </button>
+                  </div>
+                ) : (
+                  <div className="alert alert-info">
+                    You&apos;ve already voted on this survey
+                  </div>
+                )}
               </>
             )}
 
@@ -317,19 +349,21 @@ const SurveyDisplay = ({
             </div>
           )}
 
-          {/* TODO: create dedicated component handling the display and result */}
           {state === SurveyState.INVALID && (
-            <div className="alert alert-error">
-              <div className="mt-2">
-                <p>Invalid survey</p>
-              </div>
+            <div className="bg-secondary/10 text-secondary px-4 py-2 rounded-md mt-2 text-sm">
+              <p>Invalid survey</p>
             </div>
           )}
 
           {state === SurveyState.TERMINATED && (
-            <div className="bg-primary/5 text-primary px-4 py-2 rounded-md mt-2 text-sm">
-              <p>Waiting for the gateway result...</p>
-            </div>
+            <>
+              <div className="bg-primary/5 text-primary px-4 py-2 rounded-md mt-2 text-sm">
+                <p>Waiting for the gateway result...</p>
+              </div>
+              <button className="mt-2 btn btn-neutral" onClick={revealSurvey}>
+                Request to reveal the result
+              </button>
+            </>
           )}
 
           {state === SurveyState.VALID && (
