@@ -338,7 +338,10 @@ const SurveyDisplay = ({
           {state === SurveyState.ONGOING && (
             <div className="mt-6">
               <div className="flex justify-between mb-2">
-                <span>{surveyData.currentParticipants}/10 votes collected</span>
+                <span>
+                  {surveyData.currentParticipants}/
+                  {surveyParams.minResponseThreshold.toString()} votes collected
+                </span>
                 <span className="animate-pulse">🔒 Live</span>
               </div>
               <progress
