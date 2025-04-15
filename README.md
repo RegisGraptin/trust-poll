@@ -14,9 +14,9 @@
     <br />
     <a href="https://github.com/RegisGraptin/trust-poll">Code</a>
     &middot;
-    <a href="#">View Demo</a>
+    <a href="https://trust-poll.vercel.app/">View Demo</a>
     &middot;
-    <a href="#">Video Presentation</a>
+    <a href="https://youtu.be/sZXJqGXyBpc">Video Presentation</a>
   </p>
 </div>
 
@@ -241,9 +241,9 @@ To ensure the result is valid and reveal, you will have to verify that the flags
 
 ![Protocol Overview](./diagram.png)
 
-## Protocol Attacks 
+## Protocol Attacks
 
-We already talked in the "Privacy consideration" section about some considerations we should have when defining a survey, especially on the threshold parameter and the metadata definition. But, I created this section, to highlight again the critical points of our protocol. 
+We already talked in the "Privacy consideration" section about some considerations we should have when defining a survey, especially on the threshold parameter and the metadata definition. But, I created this section, to highlight again the critical points of our protocol.
 
 The first point is a weak threshold parameter of a survey. Basically, a attacker can create multiple entries using different wallet addresses with controlled metadata allowing them to extract user entry. This kind of attacks can be costly as the attacker needs to create multiple entries with controlled range and generated multiple analysis, but still possible.
 
@@ -251,15 +251,15 @@ The second one would be on metadata restriction. Currently, we allow the possibi
 
 This is why, by design, people should remain cautious when submitting data, especially on the threshold parameter and the metadata constraints, as we cannot avoid malicious behaviour and unintentionally leak.
 
-> I did not push the reflection further, but in case a malicious actor wants to extract specific information from a given address, he might do a combination of the two attacks. As, on the blockchain, all the data are public, an attacker can monitor all the user activities and try to estimate a range for the user metadata depending on how active the user is. By having this range, he might wait for a new survey participation and generate new addresses targeting estimated value to identify the user. 
+> I did not push the reflection further, but in case a malicious actor wants to extract specific information from a given address, he might do a combination of the two attacks. As, on the blockchain, all the data are public, an attacker can monitor all the user activities and try to estimate a range for the user metadata depending on how active the user is. By having this range, he might wait for a new survey participation and generate new addresses targeting estimated value to identify the user.
 
 ## Business opportunities
 
-Data are gold and privacy matters. But be able to proceed personal data while preserving privacy is a real challenge. Through our approach, we allow the possibility, in a certain extent, to analyse the collected polling and benchmarking data without compromising the users. 
+Data are gold and privacy matters. But be able to proceed personal data while preserving privacy is a real challenge. Through our approach, we allow the possibility, in a certain extent, to analyse the collected polling and benchmarking data without compromising the users.
 
 In order to push people to use our system, we need to create incentivize mechanisms allowing them to get rewarded for sharing those personal information encrypted. This can be done by integrating economical design in our protocol. We could think about a paying mechanism where analyst who is interested in a survey would pay to request a specific query. This could be a simple, straighforward approach, as analyst will be willing to have access to those data.
 
-Here are some thoughts on how we could integrate economic aspects in our protocol and could be done on a future development. 
+Here are some thoughts on how we could integrate economic aspects in our protocol and could be done on a future development.
 
 ### Reward participants
 
@@ -271,20 +271,19 @@ Another thought is regarding the data selectivity. Some people would not be inte
 
 One kind of drawbacks of our survey implementation is the query cost of an analyse. Indeed, we need to iterate over all the data to execute it and get the query result. Additionally, a query is executed only once, as the result of the query is public, meaning that anyone can read the result without having to execute the entire request. This leads to transparency on what requests are made on our protocol. It can maybe lead to collaboration on the requests cost as multiple parties can be interested in the result. However, it can lead to some unexpected behaviour, where analysts can just monitor and wait interesting queries to be executed to fetch the result for free.
 
-This kind of behaviour can be tackled down by modifying our protocol logic. For instance, we can encrypt the query result, making it available only to the executer. By doing so, if other analysts are interested in the result of the exact same query, they can buy it on the secondary markets. The original requester can then sell the result of the query to others at a cheaper and more interesting price. 
-By selling it, we can also take a fee for the survey participants, but the analyst can get rewarded by doing accurate and interesting queries. 
+This kind of behaviour can be tackled down by modifying our protocol logic. For instance, we can encrypt the query result, making it available only to the executer. By doing so, if other analysts are interested in the result of the exact same query, they can buy it on the secondary markets. The original requester can then sell the result of the query to others at a cheaper and more interesting price.
+By selling it, we can also take a fee for the survey participants, but the analyst can get rewarded by doing accurate and interesting queries.
 What interesting is through this mechanism we are reducing the query cost while providing additional incentivize mechanism for the analyst.
 
 This brings market efficiency and reduce the analyse costs. Moreover, the query price will be defined by the market as anyone can execute it and sell it at a more interesting price. This will force analysts to sell it at a just price, high enough to cover their costs, but not that much depending of the demands as others can become future competitors. And, this mechanism can be more relevant when having a large dataset, as the more data we have the more costly the requests will be.
 
 ### Prevent Market Concurrency - Encrypted Queries
 
-By defining public queries, we are allowing full transparency on the dataset queries. It offers the possibility for anyone to see what is going on on the dataset. However, regarding business opportunities, it may leak some information and potential opportunities for the analysts. This is something that may require more research and discussion with the potential analysts, to see if this feature could be relevant. 
+By defining public queries, we are allowing full transparency on the dataset queries. It offers the possibility for anyone to see what is going on on the dataset. However, regarding business opportunities, it may leak some information and potential opportunities for the analysts. This is something that may require more research and discussion with the potential analysts, to see if this feature could be relevant.
 Nevertheless, we could modify our protocol to accept encrypted input queries, allowing full confidentiality on the request executed, while preserving confidential metadata of the users. This implementation will depend on the protocol philosophy, but can, on the other hand, add an additional revenue as the cost for hidden queries can be higher. Notice that allowing encrypted queries can be defined when creating the survey allowing participants to know what is possible for the analyst and keeping full transparency for them.
-
 
 ## Final Notes
 
-- At first, when thinking this implementation, we wanted to propose an interactive approach, allowing people to potentially reveal the survey pending result while running it and also allowing analysis on it. As an example, let's say you have already 50 participants, you may want to have a current view of the polling result. But this brings some limitation in the protocol as a user could ask to reveal the data, just before the last person who wants to submit, and blocked the protocol as we will not be able to take into consideration his entry. Interactive approach might be interesting if we want to see the pending result. Nevertheless, some reflection on this side need to be taken as some edge cases might be difficult to handle. 
+- At first, when thinking this implementation, we wanted to propose an interactive approach, allowing people to potentially reveal the survey pending result while running it and also allowing analysis on it. As an example, let's say you have already 50 participants, you may want to have a current view of the polling result. But this brings some limitation in the protocol as a user could ask to reveal the data, just before the last person who wants to submit, and blocked the protocol as we will not be able to take into consideration his entry. Interactive approach might be interesting if we want to see the pending result. Nevertheless, some reflection on this side need to be taken as some edge cases might be difficult to handle.
 
 - This project was built for Zama bounty program season 8. If you are interested in my work and this project and would like to collaborate on it, please let me know!
